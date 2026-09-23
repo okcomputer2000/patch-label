@@ -1,0 +1,19 @@
+--- original/Jsoup-90.java
++++ repaired/Jsoup-90.java
+@@ -25,13 +25,12 @@
+         }
+ 
+ 
+-        while (i < end) {
+-            i++;
+-            o = input[i];
+-            if ((o & 0xC0) != 0x80) {
++        for (int k = i + 1; k <= end; k++) {
++            if (k >= input.length || (input[k] & 0xC0) != 0x80) {
+                 return false;
+             }
+         }
++        i = end;
+     }
+     return true;
+ }

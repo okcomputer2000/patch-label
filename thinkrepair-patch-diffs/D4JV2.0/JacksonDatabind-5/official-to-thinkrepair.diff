@@ -1,0 +1,33 @@
+--- official.patch
++++ thinkrepair.patch
+@@ -1,14 +1,23 @@
+ --- original/JacksonDatabind-5.java
+ +++ repaired/JacksonDatabind-5.java
+-@@ -22,7 +22,12 @@
+-                  */
++@@ -16,13 +16,16 @@
++              */
++             if (am != null) {
++                 _addMixUnders(m, am);
++-                /* Otherwise will have precedence, but must wait
++-                 * until we find the real method (mixIn methods are
++-                 * just placeholder, can't be called)
++-                 */
+              } else {
+-                 // Well, or, as per [Issue#515], multi-level merge within mixins...
+-+                am = mixIns.find(m);
+-+                if (am != null) {
+-+                    _addMixUnders(m, am);
++-                // Well, or, as per [Issue#515], multi-level merge within mixins...
+++                // Check if the method already exists in the mixIns map
+++                AnnotatedMethod existingMethod = mixIns.find(m);
+++                if (existingMethod == null) {
+++                    // If not, add the new method to the mixIns map
++                     mixIns.add(_constructMethod(m));
+ +                } else {
+-                     mixIns.add(_constructMethod(m));
+++                    // If the method already exists, augment it with the new method
+++                    _addMixUnders(m, existingMethod);
+ +                }
+              }
+          }

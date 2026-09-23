@@ -1,0 +1,10 @@
+--- original/Jsoup-88.java
++++ thinkrepair/Jsoup-88.java
+@@ -1,3 +1,6 @@
+ public String getValue() {
+-    return val;
++    if (val != null) {
++        return val;
++    }
++    return ""; // or null, depending on the desired behavior
+ }

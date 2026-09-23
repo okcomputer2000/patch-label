@@ -1,0 +1,10 @@
+--- official.patch
++++ thinkrepair.patch
+@@ -4,6 +4,6 @@
+  public Object clone() throws CloneNotSupportedException {
+ -    Object clone = createCopy(0, getItemCount() - 1);
+ +    TimeSeries clone = (TimeSeries) super.clone();
+-+    clone.data = (List) ObjectUtilities.deepClone(this.data);
+++    clone.data = (List) ObjectUtilities.deepClone(this.data); //Fix line
+      return clone;
+  }

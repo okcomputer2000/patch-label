@@ -1,0 +1,33 @@
+--- official.patch
++++ thinkrepair.patch
+@@ -1,11 +1,26 @@
+ --- original/Codec-2.java
+ +++ repaired/Codec-2.java
+-@@ -30,7 +30,7 @@
++@@ -30,9 +30,11 @@
+                  }
+                  break;
+          }
+ -        if (lineLength > 0) {
+-+        if (lineLength > 0 && pos > 0) {
+-             System.arraycopy(lineSeparator, 0, buf, pos, lineSeparator.length);
+-             pos += lineSeparator.length;
++-            System.arraycopy(lineSeparator, 0, buf, pos, lineSeparator.length);
++-            pos += lineSeparator.length;
+++        if (lineLength > 0 && lineSeparator != null && lineSeparator.length > 0) {
+++            if (pos > 0) {
+++                System.arraycopy(lineSeparator, 0, buf, pos, lineSeparator.length);
+++                pos += lineSeparator.length;
+++            }
+          }
++     } else {
++         for (int i = 0; i < inAvail; i++) {
++@@ -49,7 +51,7 @@
++                 buf[pos++] = encodeTable[(x >> 6) & MASK_6BITS];
++                 buf[pos++] = encodeTable[x & MASK_6BITS];
++                 currentLinePos += 4;
++-                if (lineLength > 0 && lineLength <= currentLinePos) {
+++                if (lineLength > 0 && lineSeparator != null && lineSeparator.length > 0 && lineLength <= currentLinePos) {
++                     System.arraycopy(lineSeparator, 0, buf, pos, lineSeparator.length);
++                     pos += lineSeparator.length;
++                     currentLinePos = 0;

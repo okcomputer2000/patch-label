@@ -1,0 +1,18 @@
+--- official.patch
++++ thinkrepair.patch
+@@ -1,13 +1,13 @@
+ --- original/Closure-101.java
+ +++ repaired/Closure-101.java
+-@@ -12,10 +12,8 @@
++@@ -12,10 +12,7 @@
+    for (FormattingOption formattingOption : flags.formatting) {
+      formattingOption.applyToOptions(options);
+    }
+ -  if (flags.process_closure_primitives) {
+ -    options.closurePass = true;
+ -  }
+- 
++-
+ +  options.closurePass = flags.process_closure_primitives;
+    initOptionsFromFlags(options);
+    return options;

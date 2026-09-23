@@ -1,0 +1,7 @@
+--- original/Math-34.java
++++ repaired/Math-34.java
+@@ -1,3 +1,3 @@
+ public Iterator<Chromosome> iterator() {
+-    return chromosomes.iterator();
++    return Collections.unmodifiableList(chromosomes).iterator();
+ }

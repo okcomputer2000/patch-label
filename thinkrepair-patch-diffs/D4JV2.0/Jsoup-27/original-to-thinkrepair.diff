@@ -1,0 +1,24 @@
+--- original/Jsoup-27.java
++++ thinkrepair/Jsoup-27.java
+@@ -3,8 +3,19 @@
+     Matcher m = charsetPattern.matcher(contentType);
+     if (m.find()) {
+         String charset = m.group(1).trim();
+-        charset = charset.toUpperCase(Locale.ENGLISH);
+-        return charset;
++        if (Charset.isSupported(charset)) {
++            return charset;
++        } else {
++            charset = charset.toLowerCase(Locale.ENGLISH);
++            if (Charset.isSupported(charset)) {
++                return charset;
++            } else {
++                charset = charset.toUpperCase(Locale.ENGLISH);
++                if (Charset.isSupported(charset)) {
++                    return charset;
++                }
++            }
++        }
+     }
+     return null;
+ }

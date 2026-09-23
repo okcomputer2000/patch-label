@@ -1,0 +1,14 @@
+--- original/Closure-152.java
++++ repaired/Closure-152.java
+@@ -7,7 +7,10 @@
+   // Warning about typeOfThis if it doesn't resolve to an ObjectType
+   // is handled further upstream.
+   // TODO(nicksantos): Handle this correctly if we have a UnionType.
+-  typeOfThis = (ObjectType) safeResolve(typeOfThis, t, scope);
++  JSType maybeTypeOfThis = safeResolve(typeOfThis, t, scope);
++  if (maybeTypeOfThis instanceof ObjectType) {
++    typeOfThis = (ObjectType) maybeTypeOfThis;
++  }
+ 
+   boolean changed = false;
+   ImmutableList.Builder<ObjectType> resolvedInterfaces =

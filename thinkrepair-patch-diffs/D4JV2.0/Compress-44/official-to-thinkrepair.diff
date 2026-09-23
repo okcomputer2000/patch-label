@@ -1,0 +1,24 @@
+--- official.patch
++++ thinkrepair.patch
+@@ -1,14 +1,14 @@
+ --- original/Compress-44.java
+ +++ repaired/Compress-44.java
+-@@ -1,6 +1,12 @@
++@@ -1,6 +1,10 @@
+  public ChecksumCalculatingInputStream(final Checksum checksum, final InputStream in) {
+- 
+-+    if ( checksum == null ){
+-+        throw new NullPointerException("Parameter checksum must not be null");
++-
++-
+++    if (checksum == null) {
+++        throw new NullPointerException("Checksum must not be null");
+ +    }
+- 
+-+    if ( in == null ){
+-+        throw new NullPointerException("Parameter in must not be null");
+++    if (in == null) {
+++        throw new NullPointerException("InputStream must not be null");
+ +    }
+  
+      this.checksum = checksum;

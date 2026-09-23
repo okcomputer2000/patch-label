@@ -1,0 +1,15 @@
+--- original/Closure-104.java
++++ repaired/Closure-104.java
+@@ -16,8 +16,10 @@
+     builder.addAlternate(that);
+   }
+   JSType result = builder.build();
+-  if (result != null) {
+-    return result;
++
++  // Check if union type has at least one alternate
++  if (result != null && !result.isEmptyType()) {
++      return result;
+   } else if (this.isObject() && that.isObject()) {
+     return getNativeType(JSTypeNative.NO_OBJECT_TYPE);
+   } else {

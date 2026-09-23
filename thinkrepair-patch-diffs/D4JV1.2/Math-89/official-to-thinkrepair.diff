@@ -1,0 +1,16 @@
+--- official.patch
++++ thinkrepair.patch
+@@ -2,9 +2,10 @@
+ +++ repaired/Math-89.java
+ @@ -1,3 +1,7 @@
+  public void addValue(Object v) {
+-+    if (v instanceof Comparable<?>){
+-         addValue((Comparable<?>) v);            
++-        addValue((Comparable<?>) v);            
+++    if (v instanceof Comparable<?>) {
+++        addValue((Comparable<?>) v);
+ +    } else {
+-+        throw new IllegalArgumentException("Object must implement Comparable");
+++        throw new IllegalArgumentException("v must be comparable");
+ +    }
+  }

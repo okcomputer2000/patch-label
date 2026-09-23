@@ -1,0 +1,31 @@
+--- original/Closure-78.java
++++ thinkrepair/Closure-78.java
+@@ -45,14 +45,12 @@
+       break;
+     case Token.MOD:
+       if (rval == 0) {
+-        error(DiagnosticType.error("JSC_DIVIDE_BY_0_ERROR", "Divide by 0"), right);
+         return null;
+       }
+       result = lval % rval;
+       break;
+     case Token.DIV:
+       if (rval == 0) {
+-        error(DiagnosticType.error("JSC_DIVIDE_BY_0_ERROR", "Divide by 0"), right);
+         return null;
+       }
+       result = lval / rval;
+@@ -73,9 +71,11 @@
+     return newNumber;
+   } else if (Double.isNaN(result)) {
+     return Node.newString(Token.NAME, "NaN");
+-  } else if (result == Double.POSITIVE_INFINITY) {
++  } 
++  else if (result == Double.POSITIVE_INFINITY) {
+     return Node.newString(Token.NAME, "Infinity");
+-  } else if (result == Double.NEGATIVE_INFINITY) {
++  } 
++  else if (result == Double.NEGATIVE_INFINITY) {
+     return new Node(Token.NEG, Node.newString(Token.NAME, "Infinity"));
+   }
+ 

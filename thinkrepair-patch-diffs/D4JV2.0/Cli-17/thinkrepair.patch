@@ -1,0 +1,10 @@
+--- original/Cli-17.java
++++ repaired/Cli-17.java
+@@ -19,6 +19,7 @@
+         else if (stopAtNonOption)
+         {
+             process(token.substring(i));
++            break; // Add the missing break statement.
+         }
+         else
+         {

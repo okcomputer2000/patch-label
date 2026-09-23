@@ -1,0 +1,11 @@
+--- original/Lang-16.java
++++ thinkrepair/Lang-16.java
+@@ -12,7 +12,7 @@
+         // a wrong value.
+         return null;
+     }
+-    if (str.startsWith("0x") || str.startsWith("-0x")) {
++    if (str.startsWith("0x") || str.startsWith("-0x") || str.startsWith("0X") || str.startsWith("-0X")) {
+         return createInteger(str);
+     }   
+     char lastChar = str.charAt(str.length() - 1);

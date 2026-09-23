@@ -1,0 +1,20 @@
+--- original/Jsoup-19.java
++++ thinkrepair/Jsoup-19.java
+@@ -1,10 +1,13 @@
+ private boolean testValidProtocol(Element el, Attribute attr, Set<Protocol> protocols) {
+-    // try to resolve relative urls to abs, and optionally update the attribute so output html has abs.
+-    // rels without a baseuri get removed
+     String value = el.absUrl(attr.getKey());
+-    if (!preserveRelativeLinks)
++    if (value.equals("")) {
++        value = attr.getValue(); // return the original value if it is not possible to create an absolute url
++    } else if (!el.hasAttr("abs:" + attr.getKey())) { // check if the URL is relative
++        return false;
++    }
++    if (!preserveRelativeLinks) {
+         attr.setValue(value);
+-
++    }
+     for (Protocol protocol : protocols) {
+         String prot = protocol.toString() + ":";
+         if (value.toLowerCase().startsWith(prot)) {

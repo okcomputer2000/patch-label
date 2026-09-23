@@ -1,0 +1,10 @@
+--- original/Jsoup-55.java
++++ repaired/Jsoup-55.java
+@@ -12,6 +12,7 @@
+             break;
+         default:
+             t.error(this);
++            r.unconsume(); // fix line to unconsume the character before transitioning
+             t.transition(BeforeAttributeName);
+     }
+ }

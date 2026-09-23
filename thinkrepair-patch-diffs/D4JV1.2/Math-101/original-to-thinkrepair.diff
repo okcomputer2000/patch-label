@@ -1,0 +1,27 @@
+--- original/Math-101.java
++++ thinkrepair/Math-101.java
+@@ -52,19 +52,18 @@
+     }
+ 
+     // parse imaginary character
+-    int n = getImaginaryCharacter().length();
++    String imaginaryChar = getImaginaryCharacter();
++    int n = imaginaryChar.length();
+     startIndex = pos.getIndex();
+-    int endIndex = startIndex + n;
+-    if (
+-        source.substring(startIndex, endIndex).compareTo(
+-        getImaginaryCharacter()) != 0) {
++    if (startIndex + n <= source.length() && source.substring(startIndex, startIndex+n).equals(imaginaryChar)) {
++        pos.setIndex(startIndex+n);
++    } else {
+         // set index back to initial, error index should be the start index
+         // character examined.
+         pos.setIndex(initialIndex);
+         pos.setErrorIndex(startIndex);
+         return null;
+     }
+-    pos.setIndex(endIndex);
+ 
+     return new Complex(re.doubleValue(), im.doubleValue() * sign);
+ }

@@ -1,0 +1,9 @@
+--- original/Closure-52.java
++++ thinkrepair/Closure-52.java
+@@ -6,5 +6,5 @@
+       return false;
+     }
+   }
+-  return len > 0;
++  return len > 0 && !s.startsWith("0"); // fixing bug related to leading zeros
+ }

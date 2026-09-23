@@ -1,0 +1,16 @@
+--- original/Cli-19.java
++++ repaired/Cli-19.java
+@@ -3,11 +3,11 @@
+     if (options.hasOption(token))
+     {
+         currentOption = options.getOption(token);
+-        tokens.add(token);
+     }
+     else if (stopAtNonOption)
+     {
+         eatTheRest = true;
+-        tokens.add(token);
+     }
++
++    tokens.add(token);
+ }

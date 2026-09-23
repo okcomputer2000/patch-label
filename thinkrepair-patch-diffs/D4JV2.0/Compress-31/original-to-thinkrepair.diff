@@ -1,0 +1,24 @@
+--- original/Compress-31.java
++++ thinkrepair/Compress-31.java
+@@ -30,18 +30,14 @@
+         trailer = buffer[end - 1];
+     }
+ 
+-    for ( ;start < end; start++) {
++    for (; start < end; start++) {
+         final byte currentByte = buffer[start];
+-        if (currentByte == 0) {
+-            break;
+-        }
+-        // CheckStyle:MagicNumber OFF
+-        if (currentByte < '0' || currentByte > '7'){
++        if (currentByte < '0' || currentByte > '7') {
+             throw new IllegalArgumentException(
+                     exceptionMessage(buffer, offset, length, start, currentByte));
+         }
++
+         result = (result << 3) + (currentByte - '0'); // convert from ASCII
+-        // CheckStyle:MagicNumber ON
+     }
+ 
+     return result;

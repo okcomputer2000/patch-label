@@ -1,0 +1,37 @@
+--- official.patch
++++ thinkrepair.patch
+@@ -1,6 +1,6 @@
+ --- original/Math-26.java
+ +++ repaired/Math-26.java
+-@@ -4,7 +4,7 @@
++@@ -4,12 +4,11 @@
+      long overflow = Integer.MAX_VALUE;
+      double r0 = value;
+      long a0 = (long)FastMath.floor(r0);
+@@ -9,12 +9,24 @@
+          throw new FractionConversionException(value, a0, 1l);
+      }
+  
+-@@ -32,7 +32,7 @@
++-    // check for (almost) integer arguments, which should not go
++-    // to iterations.
+++    // check for (almost) integer arguments, which should not go to iterations.
++     if (FastMath.abs(a0 - value) < epsilon) {
++         this.numerator = (int) a0;
++         this.denominator = 1;
++@@ -32,7 +31,7 @@
+          long a1 = (long)FastMath.floor(r1);
+          p2 = (a1 * p1) + p0;
+          q2 = (a1 * q1) + q0;
+ -        if ((p2 > overflow) || (q2 > overflow)) {
+-+        if ((FastMath.abs(p2) > overflow) || (FastMath.abs(q2) > overflow)) {
+++        if (FastMath.abs(p2) > overflow || FastMath.abs(q2) > overflow) {
+              throw new FractionConversionException(value, p2, q2);
+          }
+  
++@@ -60,5 +59,4 @@
++         this.numerator = (int) p1;
++         this.denominator = (int) q1;
++     }
++-
++ }

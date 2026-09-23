@@ -1,0 +1,10 @@
+--- original/Jsoup-49.java
++++ repaired/Jsoup-49.java
+@@ -5,6 +5,6 @@
+         Node in = children[i];
+         reparentChild(in);
+         childNodes.add(index, in);
++        reindexChildren(index);
+     }
+-    reindexChildren(index);
+ }

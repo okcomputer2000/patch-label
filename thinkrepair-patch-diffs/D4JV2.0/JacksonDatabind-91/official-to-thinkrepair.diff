@@ -1,0 +1,30 @@
+--- official.patch
++++ thinkrepair.patch
+@@ -1,18 +1,18 @@
+ --- original/JacksonDatabind-91.java
+ +++ repaired/JacksonDatabind-91.java
+-@@ -3,8 +3,16 @@
++@@ -2,9 +2,14 @@
++     if (t.isContainerType()) {
+          // First: value types may have both value and type handlers
+          JavaType ct = t.getContentType();
+-         if (ct != null) {
++-        if (ct != null) {
+ -            return (ct.getValueHandler() != null) || (ct.getTypeHandler() != null);
+-+            if ((ct.getValueHandler() != null) || (ct.getTypeHandler() != null)) {
+-+                return true;
+-+            }
+-+        }
+-         // Second: map(-like) types may have value handler for key (but not type; keys are untyped)
+-+        if (t.isMapLikeType()) {
++-        // Second: map(-like) types may have value handler for key (but not type; keys are untyped)
+++        if (ct != null && (ct.getValueHandler() != null || ct.getTypeHandler() != null)) {
+++            return true;
+++        } else {
+++            // Second: map(-like) types may have value handler for key (but not type; keys are untyped)
+ +            JavaType kt = t.getKeyType();
+-+            if (kt.getValueHandler() != null) {
+++            if (kt != null && kt.getValueHandler() != null) {
+ +                return true;
+ +            }
+          }

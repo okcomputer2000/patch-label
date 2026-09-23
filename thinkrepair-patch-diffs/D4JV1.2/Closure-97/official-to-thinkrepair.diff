@@ -1,0 +1,25 @@
+--- official.patch
++++ thinkrepair.patch
+@@ -1,12 +1,16 @@
+ --- original/Closure-97.java
+ +++ repaired/Closure-97.java
+-@@ -44,7 +44,8 @@
+-         // JavaScript handles zero shifts on signed numbers differently than
+-         // Java as an Java int can not represent the unsigned 32-bit number
+-         // where JavaScript can so use a long here.
++@@ -41,10 +41,9 @@
++         result = lvalInt >> rvalInt;
++         break;
++       case Token.URSH:
++-        // JavaScript handles zero shifts on signed numbers differently than
++-        // Java as an Java int can not represent the unsigned 32-bit number
++-        // where JavaScript can so use a long here.
+ -        result = lvalInt >>> rvalInt;
+-+        long lvalLong = lvalInt & 0xffffffffL;
+-+        result = lvalLong >>> rvalInt;
+++        // Use a long to promote lval to an unsigned 32-bit integer 
+++        long unsignedLval = ((long)lvalInt) & 0xffffffffL;
+++        result = unsignedLval >>> rvalInt;
+          break;
+        default:
+          throw new AssertionError("Unknown shift operator: " +

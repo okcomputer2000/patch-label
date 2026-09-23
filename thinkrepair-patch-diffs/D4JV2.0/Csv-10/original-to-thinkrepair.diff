@@ -1,0 +1,13 @@
+--- original/Csv-10.java
++++ thinkrepair/Csv-10.java
+@@ -4,7 +4,8 @@
+ 
+     this.out = out;
+     this.format = format;
++    if (format.getHeader() != null) { // check if header exists
++        this.printRecord((Object[]) format.getHeader()); // print header
++    }
+     this.format.validate();
+-    // TODO: Is it a good idea to do this here instead of on the first call to a print method?
+-    // It seems a pain to have to track whether the header has already been printed or not.
+ }

@@ -1,0 +1,32 @@
+--- official.patch
++++ thinkrepair.patch
+@@ -1,17 +1,20 @@
+ --- original/Cli-37.java
+ +++ repaired/Cli-37.java
+-@@ -1,7 +1,13 @@
++@@ -1,7 +1,14 @@
+  private boolean isShortOption(String token)
+  {
+      // short options (-S, -SV, -S=V, -SV1=V2, -S1S2)
+ -    return token.startsWith("-") && token.length() >= 2 && options.hasShortOption(token.substring(1, 2));
+-+    if (!token.startsWith("-") || token.length() == 1)
+-+    {
+-+        return false;
++-
++-    // remove leading "-" and "=value"
+++    if (token.startsWith("-") && token.length() >= 2) {
+++        String option = token.substring(1);
+++        // remove "=value"
+++        if (option.contains("=")) {
+++            option = option.substring(0, option.indexOf("="));
+++        }
+++        // check if the option is valid
+++        return options.hasShortOption(option);
+ +    }
+- 
+-     // remove leading "-" and "=value"
+-+    int pos = token.indexOf("=");
+-+    String optName = pos == -1 ? token.substring(1) : token.substring(1, pos);
+-+    return options.hasShortOption(optName);
+++    return false;
+  }

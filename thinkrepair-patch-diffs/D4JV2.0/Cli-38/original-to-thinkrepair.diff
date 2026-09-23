@@ -1,0 +1,22 @@
+--- original/Cli-38.java
++++ thinkrepair/Cli-38.java
+@@ -9,6 +9,17 @@
+     // remove leading "-" and "=value"
+     int pos = token.indexOf("=");
+     String optName = pos == -1 ? token.substring(1) : token.substring(1, pos);
+-    return options.hasShortOption(optName);
+-    // check for several concatenated short options
++    boolean result = options.hasShortOption(optName);
++
++    if (!result && optName.length() > 1) {
++        for (int i = 1; i < optName.length(); i++) {
++            result = options.hasShortOption(String.valueOf(optName.charAt(i)));
++            if (!result) {
++                return false;
++            }
++        }
++        return true;
++    } else {
++        return result;
++    }
+ }

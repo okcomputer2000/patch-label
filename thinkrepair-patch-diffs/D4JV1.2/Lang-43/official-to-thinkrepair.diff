@@ -1,0 +1,11 @@
+--- official.patch
++++ thinkrepair.patch
+@@ -4,7 +4,7 @@
+      int start = pos.getIndex();
+      char[] c = pattern.toCharArray();
+      if (escapingOn && c[start] == QUOTE) {
+-+        next(pos);
+++        next(pos); // move index past QUOTE
+          return appendTo == null ? null : appendTo.append(QUOTE);
+      }
+      int lastHold = start;

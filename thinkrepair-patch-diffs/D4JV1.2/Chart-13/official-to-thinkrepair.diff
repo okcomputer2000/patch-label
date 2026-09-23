@@ -1,0 +1,33 @@
+--- official.patch
++++ thinkrepair.patch
+@@ -1,11 +1,28 @@
+ --- original/Chart-13.java
+ +++ repaired/Chart-13.java
+-@@ -31,7 +31,7 @@
++@@ -22,7 +22,7 @@
++     h[2] = constraint.getHeight() - h[1] - h[0];
++     if (this.leftBlock != null) {
++         RectangleConstraint c3 = new RectangleConstraint(0.0,
++-                new Range(0.0, constraint.getWidth()),
+++                new Range(0.0, Math.max(0, w[0] - w[3])),
++                 LengthConstraintType.RANGE, h[2], null,
++                 LengthConstraintType.FIXED);
++         Size2D size = this.leftBlock.arrange(g2, c3);
++@@ -31,14 +31,14 @@
+      h[3] = h[2];
+      if (this.rightBlock != null) {
+          RectangleConstraint c4 = new RectangleConstraint(0.0,
+ -                new Range(0.0, constraint.getWidth() - w[2]),
+-+                new Range(0.0, Math.max(constraint.getWidth() - w[2], 0.0)),
+++                new Range(0.0, Math.max(0, w[0] - w[2])),
+                  LengthConstraintType.RANGE, h[2], null,
+                  LengthConstraintType.FIXED);
+          Size2D size = this.rightBlock.arrange(g2, c4);
++         w[3] = size.width;
++     }
++     h[4] = h[2];
++-    w[4] = constraint.getWidth() - w[3] - w[2];
+++    w[4] = Math.max(0, w[0] - w[3] - w[2]);
++     RectangleConstraint c5 = new RectangleConstraint(w[4], h[4]);
++     if (this.centerBlock != null) {
++         this.centerBlock.arrange(g2, c5);

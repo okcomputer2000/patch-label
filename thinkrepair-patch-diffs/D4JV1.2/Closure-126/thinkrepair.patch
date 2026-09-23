@@ -1,0 +1,20 @@
+--- original/Closure-126.java
++++ repaired/Closure-126.java
+@@ -29,14 +29,10 @@
+       Node catchCodeBlock = catchNode.getLastChild();
+       tryMinimizeExits(catchCodeBlock, exitType, labelName);
+     }
+-    /* Don't try to minimize the exits of finally blocks, as this
+-     * can cause problems if it changes the completion type of the finally
+-     * block. See ECMA 262 Sections 8.9 & 12.14
++    /* Ignore the finally block, as changes to it can
++     * change the completion type of the try block.
++     * See ECMA 262 Sections 8.9 & 12.14
+      */
+-    if (NodeUtil.hasFinally(n)) {
+-      Node finallyBlock = n.getLastChild();
+-      tryMinimizeExits(finallyBlock, exitType, labelName);
+-    }
+   }
+ 
+   // Just a 'label'.

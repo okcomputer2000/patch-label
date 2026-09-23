@@ -1,0 +1,34 @@
+--- original/Lang-52.java
++++ repaired/Lang-52.java
+@@ -39,7 +39,8 @@
+                     out.write('\\');
+                     out.write('r');
+                     break;
+-                default :
++                default:
++                    // escape the character as it's not a printable character
+                     if (ch > 0xf) {
+                         out.write("\\u00" + hex(ch));
+                     } else {
+@@ -51,7 +52,7 @@
+             switch (ch) {
+                 case '\'':
+                     if (escapeSingleQuote) {
+-                      out.write('\\');
++                        out.write('\\');
+                     }
+                     out.write('\'');
+                     break;
+@@ -63,7 +64,11 @@
+                     out.write('\\');
+                     out.write('\\');
+                     break;
+-                default :
++                case '/': // escaped for javascript
++                    out.write('\\');
++                    out.write('/');
++                    break;
++                default:
+                     out.write(ch);
+                     break;
+             }

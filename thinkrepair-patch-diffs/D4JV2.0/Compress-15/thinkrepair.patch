@@ -1,0 +1,18 @@
+--- original/Compress-15.java
++++ repaired/Compress-15.java
+@@ -18,11 +18,13 @@
+     String myComment = getComment();
+     String otherComment = other.getComment();
+     if (myComment == null) {
++        if (otherComment != null && !otherComment.equals("")) {
++            return false;
++        }
++    } else if (!myComment.equals(otherComment)) {
+         if (otherComment != null) {
+             return false;
+         }
+-    } else if (!myComment.equals(otherComment)) {
+-        return false;
+     }
+     return getTime() == other.getTime()
+         && getInternalAttributes() == other.getInternalAttributes()

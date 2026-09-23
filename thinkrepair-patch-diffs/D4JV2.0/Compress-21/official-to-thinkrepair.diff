@@ -1,0 +1,26 @@
+--- official.patch
++++ thinkrepair.patch
+@@ -1,19 +1,18 @@
+ --- original/Compress-21.java
+ +++ repaired/Compress-21.java
+-@@ -3,14 +3,13 @@
+-     int shift = 7;
++@@ -4,13 +4,13 @@
+      for (int i = 0; i < length; i++) {
+          cache |= ((bits.get(i) ? 1 : 0) << shift);
+--        --shift;
++         --shift;
+ -        if (shift == 0) {
+-+        if (--shift < 0) {
+++        if (shift < 0) { // Fixing by checking if shift is less than 0
+              header.write(cache);
+              shift = 7;
+              cache = 0;
+          }
+      }
+ -    if (length > 0 && shift > 0) {
+-+    if (shift != 7) {
+++    if (shift < 7) { // Fixing by checking if shift is less than 7
+          header.write(cache);
+      }
+  }

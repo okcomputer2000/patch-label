@@ -1,0 +1,14 @@
+--- original/Math-3.java
++++ thinkrepair/Math-3.java
+@@ -5,7 +5,10 @@
+         throw new DimensionMismatchException(len, b.length);
+     }
+ 
+-        // Revert to scalar multiplication.
++    // Use naive implementation for vectors with one element
++    if (len == 1) {
++        return a[0] * b[0];
++    }
+ 
+     final double[] prodHigh = new double[len];
+     double prodLowSum = 0;

@@ -1,0 +1,9 @@
+--- official.patch
++++ thinkrepair.patch
+@@ -5,5 +5,5 @@
+      }
+      Annotation previous = _annotations.put(ann.annotationType(), ann);
+ -    return (previous != null) && previous.equals(ann);
+-+    return (previous == null) || !previous.equals(ann);
+++    return previous == null || !previous.equals(ann);
+  }

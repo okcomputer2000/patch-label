@@ -1,0 +1,11 @@
+--- original/JacksonCore-3.java
++++ repaired/JacksonCore-3.java
+@@ -10,6 +10,8 @@
+     _inputBuffer = inputBuffer;
+     _inputPtr = start;
+     _inputEnd = end;
++    _currInputRowStart = start;
+     // If we have offset, need to omit that from byte offset, so:
++    _currInputProcessed = -start;
+     _bufferRecyclable = bufferRecyclable;
+ }

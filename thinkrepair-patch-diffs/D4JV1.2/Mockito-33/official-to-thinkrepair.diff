@@ -1,0 +1,33 @@
+--- official.patch
++++ thinkrepair.patch
+@@ -1,21 +1,18 @@
+ --- original/Mockito-33.java
+ +++ repaired/Mockito-33.java
+-@@ -4,6 +4,17 @@
++@@ -4,6 +4,13 @@
+      Method m1 = invocation.getMethod();
+      Method m2 = candidate.getMethod();
+  
+-+    if (m1.getName() != null && m1.getName().equals(m2.getName())) {
+-     	/* Avoid unnecessary cloning */
++-    	/* Avoid unnecessary cloning */
+ -    return m1.equals(m2);
+-+    	Class[] params1 = m1.getParameterTypes();
+-+    	Class[] params2 = m2.getParameterTypes();
+-+    	if (params1.length == params2.length) {
+-+    	    for (int i = 0; i < params1.length; i++) {
+-+    		if (params1[i] != params2[i])
+-+    		    return false;
+-+    	    }
+-+    	    return true;
+-+    	}
+++    if (m1.getName().equals(m2.getName()) && m1.getParameterTypes().length == m2.getParameterTypes().length) {
+++        for (int i = 0; i < m1.getParameterTypes().length; i++) {
+++            if (!m1.getParameterTypes()[i].equals(m2.getParameterTypes()[i])) {
+++                return false;
+++            }
+++        }
+++        return true;
+ +    }
+ +    return false;
+  }

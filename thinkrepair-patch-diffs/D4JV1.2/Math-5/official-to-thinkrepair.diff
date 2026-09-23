@@ -1,0 +1,11 @@
+--- official.patch
++++ thinkrepair.patch
+@@ -5,7 +5,7 @@
+  
+      if (real == 0.0 && imaginary == 0.0) {
+ -        return NaN;
+-+        return INF;
+++        return INF; 
+      }
+  
+      if (isInfinite) {

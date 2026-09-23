@@ -1,0 +1,10 @@
+--- original/Closure-119.java
++++ repaired/Closure-119.java
+@@ -58,6 +58,7 @@
+             isSet = true;
+             type = Name.Type.FUNCTION;
+             break;
++          case Token.CATCH:
+           case Token.INC:
+           case Token.DEC:
+             isSet = true;

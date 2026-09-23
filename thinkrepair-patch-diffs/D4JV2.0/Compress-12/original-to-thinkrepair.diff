@@ -1,0 +1,15 @@
+--- original/Compress-12.java
++++ thinkrepair/Compress-12.java
+@@ -24,7 +24,11 @@
+         return null;
+     }
+ 
+-    currEntry = new TarArchiveEntry(headerBuf);
++    try {
++        currEntry = new TarArchiveEntry(headerBuf);
++    } catch (IllegalArgumentException e) {
++        throw new IOException("Failed to read tar entry", e);
++    }
+     entryOffset = 0;
+     entrySize = currEntry.getSize();
+ 

@@ -1,0 +1,19 @@
+--- official.patch
++++ thinkrepair.patch
+@@ -1,11 +1,13 @@
+ --- original/Jsoup-47.java
+ +++ repaired/Jsoup-47.java
+-@@ -41,7 +41,7 @@
++@@ -40,8 +40,8 @@
++                         accum.append("&#xa0;");
+                      break;
+                  case '<':
+-                     // escape when in character data or when in a xml attribue val; not needed in html attr val
++-                    // escape when in character data or when in a xml attribue val; not needed in html attr val
+ -                    if (!inAttribute)
+-+                    if (!inAttribute || escapeMode == EscapeMode.xhtml)
+++                    // escape when in character data or when in a xml attribute value; not needed in html attribute value
+++                    if (!inAttribute || escapeMode == EscapeMode.xhtml) // Fixed line
+                          accum.append("&lt;");
+                      else
+                          accum.append(c);

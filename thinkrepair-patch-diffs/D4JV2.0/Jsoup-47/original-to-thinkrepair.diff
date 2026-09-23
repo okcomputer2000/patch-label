@@ -1,0 +1,13 @@
+--- original/Jsoup-47.java
++++ thinkrepair/Jsoup-47.java
+@@ -40,8 +40,8 @@
+                         accum.append("&#xa0;");
+                     break;
+                 case '<':
+-                    // escape when in character data or when in a xml attribue val; not needed in html attr val
+-                    if (!inAttribute)
++                    // escape when in character data or when in a xml attribute value; not needed in html attribute value
++                    if (!inAttribute || escapeMode == EscapeMode.xhtml) // Fixed line
+                         accum.append("&lt;");
+                     else
+                         accum.append(c);

@@ -1,0 +1,18 @@
+--- original/JxPath-22.java
++++ repaired/JxPath-22.java
+@@ -15,12 +15,12 @@
+             if (aNode.getNodeType() == Node.ELEMENT_NODE) {
+                 Attr attr = ((Element) aNode).getAttributeNode(qname);
+                 if (attr != null) {
+-                    return attr.getValue();
++                    uri = attr.getValue();
++                    break;
+                 }
+             }
+             aNode = aNode.getParentNode();
+         }
+-        return null;
+     }
+-    return uri;
++    return "".equals(uri) ? null : uri;
+ }

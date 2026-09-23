@@ -1,0 +1,11 @@
+--- original/Lang-58.java
++++ thinkrepair/Lang-58.java
+@@ -55,7 +55,7 @@
+             case 'L' :
+                 if (dec == null
+                     && exp == null
+-                    && isDigits(numeric.substring(1))
++                    && StringUtils.isNumeric(StringUtils.replace(StringUtils.removeStart(numeric, "-"), "+", "")) 
+                     && (numeric.charAt(0) == '-' || Character.isDigit(numeric.charAt(0)))) {
+                     try {
+                         return createLong(numeric);

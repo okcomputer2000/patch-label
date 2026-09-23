@@ -1,0 +1,73 @@
+--- official.patch
++++ thinkrepair.patch
+@@ -1,31 +1,53 @@
+ --- original/Lang-17.java
+ +++ repaired/Lang-17.java
+-@@ -6,25 +6,19 @@
+-             return;
+-         }
+-         int pos = 0;
++@@ -1,30 +1,23 @@
++-    public final void translate(CharSequence input, Writer out) throws IOException {
++-        if (out == null) {
++-            throw new IllegalArgumentException("The Writer must not be null");
++-        }
++-        if (input == null) {
++-            return;
++-        }
++-        int pos = 0;
+ -        int len = Character.codePointCount(input, 0, input.length());
+-+        int len = input.length();
+-         while (pos < len) {
+-             int consumed = translate(input, pos, out);
+-             if (consumed == 0) {
+-                 char[] c = Character.toChars(Character.codePointAt(input, pos));
+-                 out.write(c);
+-+                pos+= c.length;
+-+                continue;
++-        while (pos < len) {
++-            int consumed = translate(input, pos, out);
++-            if (consumed == 0) {
++-                char[] c = Character.toChars(Character.codePointAt(input, pos));
++-                out.write(c);
+++public final void translate(CharSequence input, Writer out) throws IOException {
+++    if (out == null) {
+++        throw new IllegalArgumentException("The Writer must not be null");
+++    }
+++    if (input == null) {
+++        return;
+++    }
+++    int pos = 0;
+++    int len = input.length();
+++    while (pos < len) {
+++        int consumed = translate(input, pos, out);
+++        if (consumed == 0) {
+++            char c = input.charAt(pos);
+++            out.write(c);
+++            pos++; // Increment by 1 for single Java character
+++        } else {
+++            for (int pt = 0; pt < consumed; pt++) {
+++                // Increment by the number of code units in this code point
+++                pos += Character.charCount(Character.codePointAt(input, pos));
+              }
+ -            else {
+- //          // contract with translators is that they have to understand codepoints 
+- //          // and they just took care of a surrogate pair
+-             for (int pt = 0; pt < consumed; pt++) {
++-//          // contract with translators is that they have to understand codepoints 
++-//          // and they just took care of a surrogate pair
++-            for (int pt = 0; pt < consumed; pt++) {
+ -                    if (pos < len - 2) {
+-                 pos += Character.charCount(Character.codePointAt(input, pos));
++-                pos += Character.charCount(Character.codePointAt(input, pos));
+ -                    } else {
+ -                        pos++;
+ -                    }
+ -                }
+ -                pos--;
+-             }
++-            }
+ -            pos++;
+          }
+      }
+++}

@@ -1,0 +1,10 @@
+--- original/Jsoup-24.java
++++ thinkrepair/Jsoup-24.java
+@@ -3,7 +3,6 @@
+         String name = r.consumeLetterSequence();
+         t.tagPending.appendTagName(name.toLowerCase());
+         t.dataBuffer.append(name);
+-        r.advance();
+         return;
+     }
+ 

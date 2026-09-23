@@ -1,0 +1,11 @@
+--- original/Closure-38.java
++++ thinkrepair/Closure-38.java
+@@ -3,7 +3,7 @@
+   // x--4 (which is a syntax error).
+   char prev = getLastChar();
+   boolean negativeZero = isNegativeZero(x);
+-  if (x < 0 && prev == '-') {
++  if ((prev == '-' || prev == '+') && (x < 0 || negativeZero)) { // Check for prev '-' or '+'
+     add(" ");
+   }
+ 

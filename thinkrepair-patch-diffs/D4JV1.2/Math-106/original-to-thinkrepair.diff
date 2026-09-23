@@ -1,0 +1,63 @@
+--- original/Math-106.java
++++ thinkrepair/Math-106.java
+@@ -33,26 +33,31 @@
+         return null;
+     }
+ 
+-        // minus signs should be leading, invalid expression
++    // minus signs should be leading, invalid expression
++    if (num.intValue() < 0) {
++        pos.setIndex(initialIndex);
++        pos.setErrorIndex(pos.getIndex());
++        return null;
++    }
+ 
+     // parse '/'
+     int startIndex = pos.getIndex();
+     char c = parseNextCharacter(source, pos);
+     switch (c) {
+-    case 0 :
+-        // no '/'
+-        // return num as a fraction
+-        return new Fraction(num.intValue(), 1);
+-    case '/' :
+-        // found '/', continue parsing denominator
+-        break;
+-    default :
+-        // invalid '/'
+-        // set index back to initial, error index should be the last
+-        // character examined.
+-        pos.setIndex(initialIndex);
+-        pos.setErrorIndex(startIndex);
+-        return null;
++        case 0:
++            // no '/'
++            // return num as a fraction
++            return new Fraction(num.intValue(), 1);
++        case '/':
++            // found '/', continue parsing denominator
++            break;
++        default:
++            // invalid '/'
++            // set index back to initial, error index should be the last
++            // character examined.
++            pos.setIndex(initialIndex);
++            pos.setErrorIndex(startIndex);
++            return null;
+     }
+ 
+     // parse whitespace
+@@ -68,7 +73,12 @@
+         return null;
+     }
+ 
+-        // minus signs must be leading, invalid
++    // minus signs must be leading, invalid expression
++    if (den.intValue() < 0) {
++        pos.setIndex(initialIndex);
++        pos.setErrorIndex(pos.getIndex());
++        return null;
++    }
+ 
+     int w = whole.intValue();
+     int n = num.intValue();

@@ -1,0 +1,12 @@
+--- original/Closure-124.java
++++ repaired/Closure-124.java
+@@ -5,7 +5,9 @@
+   }
+   Preconditions.checkArgument(node.isGetProp());
+ 
++  while (node.isGetProp()) {
+     node = node.getFirstChild();
++  }
+   if (node.isName()
+       && isNameAssignedTo(node.getString(), replacement)) {
+     return false;

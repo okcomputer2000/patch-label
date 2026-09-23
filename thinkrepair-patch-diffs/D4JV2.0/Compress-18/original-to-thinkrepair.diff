@@ -1,0 +1,14 @@
+--- original/Compress-18.java
++++ thinkrepair/Compress-18.java
+@@ -1,8 +1,8 @@
+ void writePaxHeaders(String entryName,
+                      Map<String, String> headers) throws IOException {
+-    String name = "./PaxHeaders.X/" + stripTo7Bits(entryName);
+-        // TarEntry's constructor would think this is a directory
+-        // and not allow any data to be written
++    // Use File to extract the simple name of the file
++    File file = new File(entryName);
++    String name = "./PaxHeaders.X/" + stripTo7Bits(file.getName());
+     if (name.length() >= TarConstants.NAMELEN) {
+         name = name.substring(0, TarConstants.NAMELEN - 1);
+     }

@@ -1,0 +1,22 @@
+--- original/Gson-15.java
++++ repaired/Gson-15.java
+@@ -1,9 +1,12 @@
+ public JsonWriter value(double value) throws IOException {
+-  writeDeferredName();
+-  if (Double.isNaN(value) || Double.isInfinite(value)) {
+-    throw new IllegalArgumentException("Numeric values must be finite, but was " + value);
+-  }
+-  beforeValue();
+-  out.append(Double.toString(value));
+-  return this;
++    if (!lenient) {
++        if (Double.isNaN(value) || Double.isInfinite(value)) {
++            // Check for NaN or infinity
++            throw new IllegalArgumentException("Numeric values must be finite when lenient is disabled, but was " + value);
++        }
++    }
++    writeDeferredName();
++    beforeValue();
++    out.append(Double.toString(value));
++    return this;
+ }

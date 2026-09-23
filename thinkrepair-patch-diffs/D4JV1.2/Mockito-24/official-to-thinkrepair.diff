@@ -1,0 +1,22 @@
+--- official.patch
++++ thinkrepair.patch
+@@ -1,11 +1,17 @@
+ --- original/Mockito-24.java
+ +++ repaired/Mockito-24.java
+-@@ -11,7 +11,7 @@
++@@ -11,7 +11,13 @@
+          //see issue 184.
+          //mocks by default should return 0 if references are the same, otherwise some other value because they are not the same. Hence we return 1 (anything but 0 is good).
+          //Only for compareTo() method by the Comparable interface
+ -        return 1;
+-+        return invocation.getMock() == invocation.getArguments()[0] ? 0 : 1;
+++        Object[] args = invocation.getArguments();
+++        Object obj = args[0];
+++        if (obj == invocation.getMock()) {
+++            return 0; // Return 0 if objects are the same
+++        } else {
+++            return 1; // Return 1 if objects are not the same
+++        }
+      }
+  
+      Class<?> returnType = invocation.getMethod().getReturnType();

@@ -1,0 +1,20 @@
+--- official.patch
++++ thinkrepair.patch
+@@ -1,14 +1,12 @@
+ --- original/Closure-166.java
+ +++ repaired/Closure-166.java
+-@@ -15,5 +15,11 @@
++@@ -15,5 +15,9 @@
+    // properties on this object.
+    if (constraint.isRecordType()) {
+      matchRecordTypeConstraint(constraint.toObjectType());
+ +  } else if (constraint.isUnionType()) {
+-+    for (JSType alt : constraint.toMaybeUnionType().getAlternates()) {
+-+      if (alt.isRecordType()) {
+-+        matchRecordTypeConstraint(alt.toObjectType());
+-+      }
+++    for (JSType type : constraint.toMaybeUnionType().getAlternates()) {
+++      matchConstraint(type);
+ +    }
+    }
+  }

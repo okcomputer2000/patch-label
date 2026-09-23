@@ -1,0 +1,11 @@
+--- original/Jsoup-34.java
++++ repaired/Jsoup-34.java
+@@ -7,7 +7,7 @@
+             while(++offset < length && startChar != input[offset]);
+         int i = offset + 1;
+         int last = i + seq.length()-1;
+-        if (offset < length) {
++        if (offset < length && last <= length) {
+             for (int j = 1; i < last && seq.charAt(j) == input[i]; i++, j++);
+             if (i == last) // found full sequence
+                 return offset - pos;

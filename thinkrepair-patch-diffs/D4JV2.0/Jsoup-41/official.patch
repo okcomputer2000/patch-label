@@ -1,0 +1,9 @@
+--- original/Jsoup-41.java
++++ repaired/Jsoup-41.java
+@@ -5,5 +5,5 @@
+ 
+     Element element = (Element) o;
+ 
+-    return this == o;
++    return tag.equals(element.tag);
+ }

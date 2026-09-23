@@ -1,0 +1,11 @@
+--- original/JacksonDatabind-57.java
++++ thinkrepair/JacksonDatabind-57.java
+@@ -4,6 +4,6 @@
+     if (_dataFormatReaders != null) {
+         return _detectBindAndReadValues(_dataFormatReaders.findFormat(src, offset, length), false);
+     }
+-    return _bindAndReadValues(_considerFilter(_parserFactory.createParser(src), 
+-            true));
++    JsonParser jp = _parserFactory.createParser(src, offset, length); // Fix the argument initialization
++    return _bindAndReadValues(_considerFilter(jp, true));
+ }

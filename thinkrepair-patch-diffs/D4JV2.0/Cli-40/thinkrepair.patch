@@ -1,0 +1,10 @@
+--- original/Cli-40.java
++++ repaired/Cli-40.java
+@@ -38,6 +38,6 @@
+     }
+     else
+     {
+-        return null;
++        throw new ParseException("Unsupported class type: " + clazz);
+     }
+ }

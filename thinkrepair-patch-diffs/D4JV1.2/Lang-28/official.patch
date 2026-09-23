@@ -1,0 +1,16 @@
+--- original/Lang-28.java
++++ repaired/Lang-28.java
+@@ -26,7 +26,13 @@
+             return 0;
+         }
+ 
++        if(entityValue > 0xFFFF) {
++            char[] chrs = Character.toChars(entityValue);
++            out.write(chrs[0]);
++            out.write(chrs[1]);
++        } else {
+             out.write(entityValue);
++        }
+         return 2 + (end - start) + (isHex ? 1 : 0) + 1;
+     }
+     return 0;

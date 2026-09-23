@@ -1,0 +1,28 @@
+--- official.patch
++++ thinkrepair.patch
+@@ -1,12 +1,20 @@
+ --- original/JacksonCore-7.java
+ +++ repaired/JacksonCore-7.java
+-@@ -1,6 +1,9 @@
++@@ -1,9 +1,14 @@
+  public int writeValue() {
+      // Most likely, object:
+      if (_type == TYPE_OBJECT) {
+-+        if (!_gotName) {
++-        _gotName = false;
++-        ++_index;
++-        return STATUS_OK_AFTER_COLON;
+++        if (_gotName) {
+++            _gotName = false;
+++            ++_index;
+++            return STATUS_OK_AFTER_COLON;
+++        } else {
+++            _gotName = true;
+ +            return STATUS_EXPECT_NAME;
+ +        }
+-         _gotName = false;
+-         ++_index;
+-         return STATUS_OK_AFTER_COLON;
++     }
++ 
++     // Ok, array?

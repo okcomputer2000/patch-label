@@ -1,0 +1,15 @@
+--- original/Compress-7.java
++++ repaired/Compress-7.java
+@@ -3,10 +3,10 @@
+     int          end = offset + length;
+ 
+     for (int i = offset; i < end; ++i) {
+-        if (buffer[i] == 0) {
++        if (buffer[i] == '\0') {
+             break;
+         }
+-        result.append((char) buffer[i]);
++        result.append((char) (buffer[i] & 0xFF));
+     }
+ 
+     return result.toString();

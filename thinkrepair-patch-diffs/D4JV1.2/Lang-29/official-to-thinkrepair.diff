@@ -1,0 +1,15 @@
+--- official.patch
++++ thinkrepair.patch
+@@ -1,7 +1,10 @@
+ --- original/Lang-29.java
+ +++ repaired/Lang-29.java
+-@@ -1,3 +1,3 @@
++@@ -1,3 +1,5 @@
+ -static float toJavaVersionInt(String version) {
++-    return toVersionInt(toJavaVersionIntArray(version, JAVA_VERSION_TRIM_SIZE));
+ +static int toJavaVersionInt(String version) {
+-     return toVersionInt(toJavaVersionIntArray(version, JAVA_VERSION_TRIM_SIZE));
+++    int[] versionArray = toJavaVersionIntArray(version, JAVA_VERSION_TRIM_SIZE);
+++    int versionInt = toVersionInt(versionArray);
+++    return versionInt;
+  }

@@ -1,0 +1,13 @@
+--- original/Cli-4.java
++++ repaired/Cli-4.java
+@@ -6,7 +6,9 @@
+     if (requiredOptions.size() > 0)
+     {
+         Iterator iter = requiredOptions.iterator();
+-        StringBuffer buff = new StringBuffer();
++        StringBuffer buff = new StringBuffer("Missing required option");
++        buff.append(requiredOptions.size() == 1 ? "" : "s");
++        buff.append(": ");
+ 
+ 
+         // loop through the required options

@@ -1,0 +1,10 @@
+--- original/Lang-43.java
++++ repaired/Lang-43.java
+@@ -3,6 +3,7 @@
+     int start = pos.getIndex();
+     char[] c = pattern.toCharArray();
+     if (escapingOn && c[start] == QUOTE) {
++        next(pos); // move index past QUOTE
+         return appendTo == null ? null : appendTo.append(QUOTE);
+     }
+     int lastHold = start;

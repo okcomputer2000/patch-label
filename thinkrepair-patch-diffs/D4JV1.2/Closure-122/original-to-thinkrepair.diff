@@ -1,0 +1,9 @@
+--- original/Closure-122.java
++++ thinkrepair/Closure-122.java
+@@ -1,5 +1,5 @@
+ private void handleBlockComment(Comment comment) {
+-  if (comment.getValue().indexOf("/* @") != -1 || comment.getValue().indexOf("\n * @") != -1) {
++  if (comment.getValue().matches("(?s).*\\/\\*\\s*@.*|(?s).*\\n\\s*\\*\\s*@.*")) {
+     errorReporter.warning(
+         SUSPICIOUS_COMMENT_WARNING,
+         sourceName,

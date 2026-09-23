@@ -1,0 +1,11 @@
+--- original/Time-19.java
++++ repaired/Time-19.java
+@@ -18,7 +18,7 @@
+                 return offsetLocal;
+             }
+         }
+-    } else if (offsetLocal > 0) {
++    } else if (offsetLocal >= 0) {
+         long prev = previousTransition(instantAdjusted);
+         if (prev < instantAdjusted) {
+             int offsetPrev = getOffset(prev);

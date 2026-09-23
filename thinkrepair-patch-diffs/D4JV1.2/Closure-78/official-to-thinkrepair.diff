@@ -1,0 +1,20 @@
+--- official.patch
++++ thinkrepair.patch
+@@ -15,3 +15,17 @@
+          return null;
+        }
+        result = lval / rval;
++@@ -73,9 +71,11 @@
++     return newNumber;
++   } else if (Double.isNaN(result)) {
++     return Node.newString(Token.NAME, "NaN");
++-  } else if (result == Double.POSITIVE_INFINITY) {
+++  } 
+++  else if (result == Double.POSITIVE_INFINITY) {
++     return Node.newString(Token.NAME, "Infinity");
++-  } else if (result == Double.NEGATIVE_INFINITY) {
+++  } 
+++  else if (result == Double.NEGATIVE_INFINITY) {
++     return new Node(Token.NEG, Node.newString(Token.NAME, "Infinity"));
++   }
++ 

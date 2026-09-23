@@ -1,0 +1,13 @@
+--- original/Compress-17.java
++++ repaired/Compress-17.java
+@@ -31,8 +31,9 @@
+     }
+     // May have additional NULs or spaces
+     trailer = buffer[end - 1];
+-    if (trailer == 0 || trailer == ' '){
++    while (start < end - 1 && (trailer == 0 || trailer == ' ')) {
+         end--;
++        trailer = buffer[end - 1];
+     }
+ 
+     for ( ;start < end; start++) {

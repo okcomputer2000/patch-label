@@ -1,0 +1,11 @@
+--- official.patch
++++ thinkrepair.patch
+@@ -4,7 +4,7 @@
+          else if (stopAtNonOption)
+          {
+              process(token.substring(i));
+-+            break;
+++            break; // Add the missing break statement.
+          }
+          else
+          {

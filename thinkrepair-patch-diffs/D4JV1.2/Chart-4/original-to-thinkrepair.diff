@@ -1,0 +1,27 @@
+--- original/Chart-4.java
++++ thinkrepair/Chart-4.java
+@@ -65,15 +65,18 @@
+                             DatasetUtilities.findRangeBounds(d));
+                 }
+             }
+-
++            if (r != null) {
+                 Collection c = r.getAnnotations();
+-                Iterator i = c.iterator();
+-                while (i.hasNext()) {
+-                    XYAnnotation a = (XYAnnotation) i.next();
+-                    if (a instanceof XYAnnotationBoundsInfo) {
+-                        includedAnnotations.add(a);
++                if (c != null) {
++                    Iterator i = c.iterator();
++                    while (i.hasNext()) {
++                        XYAnnotation a = (XYAnnotation) i.next();
++                        if (a instanceof XYAnnotationBoundsInfo) {
++                            includedAnnotations.add(a);
++                        }
+                     }
+                 }
++            }
+         }
+     }
+ 

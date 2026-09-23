@@ -1,0 +1,17 @@
+--- original/Jsoup-6.java
++++ repaired/Jsoup-6.java
+@@ -21,11 +21,11 @@
+                 charval = full.get(name);
+         }
+ 
+-        if (charval != -1 || charval > 0xFFFF) { // out of range
++        if (charval != -1 && charval <= 0xFFFF) { // check if charval is valid Unicode character
+             String c = Character.toString((char) charval);
+-            m.appendReplacement(accum, c);
++            m.appendReplacement(accum, Matcher.quoteReplacement(c));
+         } else {
+-            m.appendReplacement(accum, m.group(0));
++            m.appendReplacement(accum, Matcher.quoteReplacement(m.group(0))); // use m.group(0) for default case
+         }
+     }
+     m.appendTail(accum);

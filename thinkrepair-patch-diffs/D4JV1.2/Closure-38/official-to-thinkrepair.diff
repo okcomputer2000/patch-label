@@ -1,0 +1,11 @@
+--- official.patch
++++ thinkrepair.patch
+@@ -5,7 +5,7 @@
+    char prev = getLastChar();
+    boolean negativeZero = isNegativeZero(x);
+ -  if (x < 0 && prev == '-') {
+-+  if ((x < 0 || negativeZero) && prev == '-') {
+++  if ((prev == '-' || prev == '+') && (x < 0 || negativeZero)) { // Check for prev '-' or '+'
+      add(" ");
+    }
+  

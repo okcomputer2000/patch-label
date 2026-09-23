@@ -1,0 +1,9 @@
+--- original/Closure-52.java
++++ repaired/Closure-52.java
+@@ -6,5 +6,5 @@
+       return false;
+     }
+   }
+-  return len > 0;
++  return len > 0 && s.charAt(0) != '0';
+ }

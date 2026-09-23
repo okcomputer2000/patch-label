@@ -1,0 +1,21 @@
+--- original/Jsoup-59.java
++++ thinkrepair/Jsoup-59.java
+@@ -5,15 +5,17 @@
+     if (pendingAttributeName != null) {
+         // the tokeniser has skipped whitespace control chars, but trimming could collapse to empty for other control codes, so verify here
+         pendingAttributeName = pendingAttributeName.trim();
++        if (pendingAttributeName.length() > 0) {
+             Attribute attribute;
+             if (hasPendingAttributeValue)
+                 attribute = new Attribute(pendingAttributeName,
+-                    pendingAttributeValue.length() > 0 ? pendingAttributeValue.toString() : pendingAttributeValueS);
++                        pendingAttributeValue.length() > 0 ? pendingAttributeValue.toString() : pendingAttributeValueS);
+             else if (hasEmptyAttributeValue)
+                 attribute = new Attribute(pendingAttributeName, "");
+             else
+                 attribute = new BooleanAttribute(pendingAttributeName);
+             attributes.put(attribute);
++        }
+     }
+     pendingAttributeName = null;
+     hasEmptyAttributeValue = false;

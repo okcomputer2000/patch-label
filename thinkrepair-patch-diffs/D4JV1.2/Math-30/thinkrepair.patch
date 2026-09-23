@@ -1,0 +1,12 @@
+--- original/Math-30.java
++++ repaired/Math-30.java
+@@ -3,8 +3,7 @@
+                                          final int n2)
+     throws ConvergenceException, MaxCountExceededException {
+ 
+-    final int n1n2prod = n1 * n2;
+-
++    final long n1n2prod = (long) n1 * n2; // Use long to store product
+     // http://en.wikipedia.org/wiki/Mann%E2%80%93Whitney_U#Normal_approximation
+     final double EU = n1n2prod / 2.0;
+     final double VarU = n1n2prod * (n1 + n2 + 1) / 12.0;

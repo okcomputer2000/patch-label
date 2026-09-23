@@ -1,0 +1,15 @@
+--- official.patch
++++ thinkrepair.patch
+@@ -10,3 +10,12 @@
+              return -val1;
+          case 0:
+              return 0L;
++@@ -9,7 +12,7 @@
++     }
++     long total = val1 * val2;
++     if (total / val2 != val1) {
++-      throw new ArithmeticException("Multiplication overflows a long: " + val1 + " * " + val2);
+++        throw new ArithmeticException("Multiplication overflows a long: " + val1 + " * " + val2);
++     }
++     return total;
++ }

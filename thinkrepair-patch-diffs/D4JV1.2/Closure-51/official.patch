@@ -1,0 +1,17 @@
+--- original/Closure-51.java
++++ repaired/Closure-51.java
+@@ -6,7 +6,7 @@
+     add(" ");
+   }
+ 
+-  if ((long) x == x) {
++  if ((long) x == x && !isNegativeZero(x)) {
+     long value = (long) x;
+     long mantissa = value;
+     int exp = 0;
+@@ -24,5 +24,4 @@
+   } else {
+     add(String.valueOf(x));
+   }
+-
+ }

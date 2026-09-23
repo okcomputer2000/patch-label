@@ -1,0 +1,15 @@
+--- official.patch
++++ thinkrepair.patch
+@@ -1,10 +1,9 @@
+ --- original/Closure-122.java
+ +++ repaired/Closure-122.java
+-@@ -1,5 +1,6 @@
++@@ -1,5 +1,5 @@
+  private void handleBlockComment(Comment comment) {
+ -  if (comment.getValue().indexOf("/* @") != -1 || comment.getValue().indexOf("\n * @") != -1) {
+-+  Pattern p = Pattern.compile("(/|(\n[ \t]*))\\*[ \t]*@[a-zA-Z]");
+-+  if (p.matcher(comment.getValue()).find()) {
+++  if (comment.getValue().matches("(?s).*\\/\\*\\s*@.*|(?s).*\\n\\s*\\*\\s*@.*")) {
+      errorReporter.warning(
+          SUSPICIOUS_COMMENT_WARNING,
+          sourceName,

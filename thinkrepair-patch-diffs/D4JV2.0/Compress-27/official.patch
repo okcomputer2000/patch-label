@@ -1,0 +1,13 @@
+--- original/Compress-27.java
++++ repaired/Compress-27.java
+@@ -29,10 +29,6 @@
+         end--;
+         trailer = buffer[end - 1];
+     }
+-    if (start == end) {
+-        throw new IllegalArgumentException(
+-                exceptionMessage(buffer, offset, length, start, trailer));
+-    }
+ 
+     for ( ;start < end; start++) {
+         final byte currentByte = buffer[start];

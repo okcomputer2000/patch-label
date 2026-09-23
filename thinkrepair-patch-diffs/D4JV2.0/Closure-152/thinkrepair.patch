@@ -1,0 +1,18 @@
+--- original/Closure-152.java
++++ repaired/Closure-152.java
+@@ -4,10 +4,11 @@
+   call = (ArrowType) safeResolve(call, t, scope);
+   prototype = (FunctionPrototypeType) safeResolve(prototype, t, scope);
+ 
+-  // Warning about typeOfThis if it doesn't resolve to an ObjectType
+-  // is handled further upstream.
+-  // TODO(nicksantos): Handle this correctly if we have a UnionType.
+-  typeOfThis = (ObjectType) safeResolve(typeOfThis, t, scope);
++  // Check result of safeResolve() before casting to ObjectType
++  JSType typeOfThisResolved = safeResolve(typeOfThis, t, scope); 
++  if (typeOfThisResolved instanceof ObjectType) {
++      typeOfThis = (ObjectType) typeOfThisResolved;
++  }
+ 
+   boolean changed = false;
+   ImmutableList.Builder<ObjectType> resolvedInterfaces =

@@ -1,0 +1,10 @@
+--- original/JacksonDatabind-46.java
++++ thinkrepair/JacksonDatabind-46.java
+@@ -3,6 +3,7 @@
+     _classSignature(_class, sb, false);
+     sb.append('<');
+     sb = _referencedType.getGenericSignature(sb);
++    sb.append('>');
+     sb.append(';');
+     return sb;
+ }

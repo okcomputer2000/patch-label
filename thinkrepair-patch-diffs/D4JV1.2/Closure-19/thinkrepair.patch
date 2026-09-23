@@ -1,0 +1,13 @@
+--- original/Closure-19.java
++++ repaired/Closure-19.java
+@@ -13,7 +13,9 @@
+       scope.inferQualifiedSlot(node, qualifiedName, origType, type);
+       break;
+ 
+-      // "this" references aren't currently modeled in the CFG.
++    case Token.THIS:
++      // Do nothing, "this" references do not need to be declared in scope
++      break;
+ 
+     default:
+       throw new IllegalArgumentException("Node cannot be refined. \n" +

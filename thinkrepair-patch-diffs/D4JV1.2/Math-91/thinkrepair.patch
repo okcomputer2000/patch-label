@@ -1,0 +1,11 @@
+--- original/Math-91.java
++++ repaired/Math-91.java
+@@ -1,5 +1,5 @@
+ public int compareTo(Fraction object) {
+-    double nOd = doubleValue();
+-    double dOn = object.doubleValue();
+-    return (nOd < dOn) ? -1 : ((nOd > dOn) ? +1 : 0);
++    long nOq = numerator * object.denominator;
++    long dOn = denominator * object.numerator;
++    return Long.compare(nOq, dOn);
+ }

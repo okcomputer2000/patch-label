@@ -1,0 +1,17 @@
+--- official.patch
++++ thinkrepair.patch
+@@ -1,7 +1,12 @@
+ --- original/Jsoup-57.java
+ +++ repaired/Jsoup-57.java
+-@@ -5,6 +5,6 @@
+-     for (Iterator<String> it = attributes.keySet().iterator(); it.hasNext(); ) {
++@@ -2,9 +2,10 @@
++     Validate.notEmpty(key);
++     if (attributes == null)
++         return;
++-    for (Iterator<String> it = attributes.keySet().iterator(); it.hasNext(); ) {
+++    Iterator<String> it = attributes.keySet().iterator();
+++    while (it.hasNext()) {
+          String attrKey = it.next();
+          if (attrKey.equalsIgnoreCase(key))
+ -            attributes.remove(attrKey);

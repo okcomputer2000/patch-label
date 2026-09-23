@@ -1,0 +1,11 @@
+--- official.patch
++++ thinkrepair.patch
+@@ -11,7 +11,7 @@
+ -    }
+ -    --idx;
+ -    indices[last] = idx;
+-+    indices[last] = index - count;
+++    indices[last] = index - count; // calculate index for last dimension
+  
+      return indices;
+  }

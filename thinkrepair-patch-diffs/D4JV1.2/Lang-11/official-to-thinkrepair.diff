@@ -1,0 +1,62 @@
+--- official.patch
++++ thinkrepair.patch
+@@ -1,13 +1,53 @@
+ --- original/Lang-11.java
+ +++ repaired/Lang-11.java
+-@@ -19,6 +19,10 @@
+-                 end = 'z' + 1;
++@@ -1,5 +1,6 @@
++ public static String random(int count, int start, int end, boolean letters, boolean numbers,
++                             char[] chars, Random random) {
+++
++     if (count == 0) {
++         return "";
++     } else if (count < 0) {
++@@ -20,6 +21,8 @@
+                  start = ' ';                
+              }
+-+        }
+-+    } else {
+-+        if (end <= start) {
+-+            throw new IllegalArgumentException("Parameter end (" + end + ") must be greater than start (" + start + ")");
+          }
+++    } else if (end <= start) {
+++        throw new IllegalArgumentException("Parameter end (" + end + ") must be greater than start (" + start + ")");
+      }
+  
++     char[] buffer = new char[count];
++@@ -32,11 +35,9 @@
++         } else {
++             ch = chars[random.nextInt(gap) + start];
++         }
++-        if (letters && Character.isLetter(ch)
++-                || numbers && Character.isDigit(ch)
++-                || !letters && !numbers) {
++-            if(ch >= 56320 && ch <= 57343) {
++-                if(count == 0) {
+++        if (letters && Character.isLetter(ch) || numbers && Character.isDigit(ch) || !letters && !numbers) {
+++            if (ch >= 56320 && ch <= 57343) {
+++                if (count == 0) {
++                     count++;
++                 } else {
++                     // low surrogate, insert high surrogate after putting it in
++@@ -44,8 +45,8 @@
++                     count--;
++                     buffer[count] = (char) (55296 + random.nextInt(128));
++                 }
++-            } else if(ch >= 55296 && ch <= 56191) {
++-                if(count == 0) {
+++            } else if (ch >= 55296 && ch <= 56191) {
+++                if (count == 0) {
++                     count++;
++                 } else {
++                     // high surrogate, insert low surrogate before putting it in
++@@ -53,7 +54,7 @@
++                     count--;
++                     buffer[count] = ch;
++                 }
++-            } else if(ch >= 56192 && ch <= 56319) {
+++            } else if (ch >= 56192 && ch <= 56319) {
++                 // private high surrogate, no effing clue, so skip it
++                 count++;
++             } else {

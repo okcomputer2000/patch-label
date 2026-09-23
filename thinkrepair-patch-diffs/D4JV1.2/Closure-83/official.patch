@@ -1,0 +1,12 @@
+--- original/Closure-83.java
++++ repaired/Closure-83.java
+@@ -1,5 +1,8 @@
+ public int parseArguments(Parameters params) throws CmdLineException {
+-  String param = params.getParameter(0);
++  String param = null;
++  try {
++    param = params.getParameter(0);
++  } catch (CmdLineException e) {}
+ 
+   if (param == null) {
+     setter.addValue(true);

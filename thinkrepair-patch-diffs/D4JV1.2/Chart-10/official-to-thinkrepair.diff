@@ -1,0 +1,14 @@
+--- official.patch
++++ thinkrepair.patch
+@@ -1,8 +1,8 @@
+ --- original/Chart-10.java
+ +++ repaired/Chart-10.java
+-@@ -1,4 +1,4 @@
++@@ -1,4 +1,3 @@
+  public String generateToolTipFragment(String toolTipText) {
+ -    return " title=\"" + toolTipText
+-+    return " title=\"" + ImageMapUtilities.htmlEscape(toolTipText) 
+-         + "\" alt=\"\"";
++-        + "\" alt=\"\"";
+++    return " title=\"" + toolTipText.replaceAll("\"", "&quot;") + "\" alt=\"\"";
+  }

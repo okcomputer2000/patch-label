@@ -1,0 +1,18 @@
+--- official.patch
++++ thinkrepair.patch
+@@ -1,10 +1,12 @@
+ --- original/Lang-55.java
+ +++ repaired/Lang-55.java
+-@@ -2,6 +2,8 @@
+-     if(this.runningState != STATE_RUNNING && this.runningState != STATE_SUSPENDED) {
++@@ -1,7 +1,9 @@
++ public void stop() {
++-    if(this.runningState != STATE_RUNNING && this.runningState != STATE_SUSPENDED) {
+++    if (this.runningState != STATE_RUNNING && this.runningState != STATE_SUSPENDED) {
+          throw new IllegalStateException("Stopwatch is not running. ");
+      }
+-+    if(this.runningState == STATE_RUNNING) {
+++    if (this.runningState == STATE_RUNNING) { // Not suspended
+          stopTime = System.currentTimeMillis();
+ +    }
+      this.runningState = STATE_STOPPED;

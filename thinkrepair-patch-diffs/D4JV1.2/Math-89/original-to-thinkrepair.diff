@@ -1,0 +1,11 @@
+--- original/Math-89.java
++++ thinkrepair/Math-89.java
+@@ -1,3 +1,7 @@
+ public void addValue(Object v) {
+-        addValue((Comparable<?>) v);            
++    if (v instanceof Comparable<?>) {
++        addValue((Comparable<?>) v);
++    } else {
++        throw new IllegalArgumentException("v must be comparable");
++    }
+ }

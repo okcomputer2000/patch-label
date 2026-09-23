@@ -1,0 +1,10 @@
+--- original/Jsoup-26.java
++++ repaired/Jsoup-26.java
+@@ -2,6 +2,7 @@
+     Validate.notNull(dirtyDocument);
+ 
+     Document clean = Document.createShell(dirtyDocument.baseUri());
++    if (dirtyDocument.body() != null) // frameset documents won't have a body. the clean doc will have empty body.
+         copySafeNodes(dirtyDocument.body(), clean.body());
+ 
+     return clean;

@@ -1,0 +1,12 @@
+--- original/Compress-30.java
++++ repaired/Compress-30.java
+@@ -13,6 +13,9 @@
+     if (this.in == null) {
+         throw new IOException("stream closed");
+     }
++    if (len == 0) {
++        return 0;
++    }
+ 
+     final int hi = offs + len;
+     int destOffs = offs;

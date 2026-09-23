@@ -1,0 +1,20 @@
+--- official.patch
++++ thinkrepair.patch
+@@ -1,11 +1,13 @@
+ --- original/Gson-13.java
+ +++ repaired/Gson-13.java
+-@@ -88,7 +88,7 @@
+-   }
++@@ -89,6 +89,10 @@
+  
+    // We've read a complete number. Decide if it's a PEEKED_LONG or a PEEKED_NUMBER.
+--  if (last == NUMBER_CHAR_DIGIT && fitsInLong && (value != Long.MIN_VALUE || negative)) {
+-+  if (last == NUMBER_CHAR_DIGIT && fitsInLong && (value != Long.MIN_VALUE || negative) && (value!=0 || false==negative)) {
++   if (last == NUMBER_CHAR_DIGIT && fitsInLong && (value != Long.MIN_VALUE || negative)) {
+++    if (value == 0 && negative && i < l - p && buffer[p + i] != '.') { // handle negative zero
+++      peekedNumberLength = i;
+++      return peeked = PEEKED_NUMBER;
+++    }
+      peekedLong = negative ? value : -value;
+      pos += i;
+      return peeked = PEEKED_LONG;

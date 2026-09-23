@@ -1,0 +1,18 @@
+--- official.patch
++++ thinkrepair.patch
+@@ -1,12 +1,11 @@
+ --- original/Lang-58.java
+ +++ repaired/Lang-58.java
+-@@ -55,8 +55,7 @@
++@@ -55,7 +55,7 @@
+              case 'L' :
+                  if (dec == null
+                      && exp == null
+ -                    && isDigits(numeric.substring(1))
+--                    && (numeric.charAt(0) == '-' || Character.isDigit(numeric.charAt(0)))) {
+-+                    && (numeric.charAt(0) == '-' && isDigits(numeric.substring(1)) || isDigits(numeric))) {
+++                    && StringUtils.isNumeric(StringUtils.replace(StringUtils.removeStart(numeric, "-"), "+", "")) 
++                     && (numeric.charAt(0) == '-' || Character.isDigit(numeric.charAt(0)))) {
+                      try {
+                          return createLong(numeric);
+-                     } catch (NumberFormatException nfe) {

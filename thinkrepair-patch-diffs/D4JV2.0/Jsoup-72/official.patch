@@ -1,0 +1,11 @@
+--- original/Jsoup-72.java
++++ repaired/Jsoup-72.java
+@@ -2,6 +2,8 @@
+     // limit (no cache):
+     if (count > maxStringCacheLen)
+         return new String(charBuf, start, count);
++    if (count < 1)
++        return "";
+ 
+     // calculate hash:
+     int hash = 0;

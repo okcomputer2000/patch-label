@@ -1,0 +1,23 @@
+--- official.patch
++++ thinkrepair.patch
+@@ -1,15 +1,17 @@
+ --- original/Gson-16.java
+ +++ repaired/Gson-16.java
+-@@ -4,7 +4,12 @@
++@@ -4,8 +4,12 @@
+    while (true) {
+      if (toResolve instanceof TypeVariable) {
+        TypeVariable<?> typeVariable = (TypeVariable<?>) toResolve;
++-        // cannot reduce due to infinite recursion
++-      toResolve = resolveTypeVariable(context, contextRawType, typeVariable);
+ +      if (visitedTypeVariables.contains(typeVariable)) {
+-         // cannot reduce due to infinite recursion
+ +        return toResolve;
+ +      } else {
+ +        visitedTypeVariables.add(typeVariable);
+++        toResolve = resolveTypeVariable(context, contextRawType, typeVariable);
+ +      }
+-       toResolve = resolveTypeVariable(context, contextRawType, typeVariable);
+        if (toResolve == typeVariable) {
+          return toResolve;
++       }

@@ -1,0 +1,10 @@
+.venv/
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+*.pyc
+dist/
+
+.patch-label/
+results/
+tools/defects4j/

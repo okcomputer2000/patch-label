@@ -1,0 +1,15 @@
+--- original/Lang-33.java
++++ repaired/Lang-33.java
+@@ -6,7 +6,11 @@
+     }
+     Class<?>[] classes = new Class[array.length];
+     for (int i = 0; i < array.length; i++) {
+-        classes[i] = array[i].getClass();
++        if (array[i] == null) {
++            classes[i] = null;
++        } else {
++            classes[i] = array[i].getClass();
++        }
+     }
+     return classes;
+ }

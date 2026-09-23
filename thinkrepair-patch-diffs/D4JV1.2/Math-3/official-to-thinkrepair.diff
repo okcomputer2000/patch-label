@@ -1,0 +1,13 @@
+--- official.patch
++++ thinkrepair.patch
+@@ -4,8 +4,9 @@
+          throw new DimensionMismatchException(len, b.length);
+      }
+  
++-        // Revert to scalar multiplication.
+++    // Use naive implementation for vectors with one element
+ +    if (len == 1) {
+-         // Revert to scalar multiplication.
+ +        return a[0] * b[0];
+ +    }
+  

@@ -1,0 +1,29 @@
+[project]
+name = "patch-label"
+version = "0.1.0"
+description = "Build and label control-flow paths for ThinkRepair Defects4J patches"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "patch-label contributors" }]
+dependencies = []
+
+[project.scripts]
+patch-label = "patch_label.cli:main"
+
+[dependency-groups]
+dev = [
+  "pytest>=8.4,<9",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/patch_label"]
+
+[tool.pytest.ini_options]
+addopts = "-q"
+testpaths = ["tests"]
+

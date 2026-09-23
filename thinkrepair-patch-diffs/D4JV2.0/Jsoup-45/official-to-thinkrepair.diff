@@ -1,0 +1,11 @@
+--- official.patch
++++ thinkrepair.patch
+@@ -5,7 +5,7 @@
+              transition(HtmlTreeBuilderState.InSelect);
+              break; // frag
+ -        } else if (("td".equals(name) || "td".equals(name) && !last)) {
+-+        } else if (("td".equals(name) || "th".equals(name) && !last)) {
+++        } else if (("td".equals(name) || "th".equals(name)) && !last) {
+              transition(HtmlTreeBuilderState.InCell);
+              break;
+          } else if ("tr".equals(name)) {

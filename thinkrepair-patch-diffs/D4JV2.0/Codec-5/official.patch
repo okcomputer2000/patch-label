@@ -1,0 +1,12 @@
+--- original/Codec-5.java
++++ repaired/Codec-5.java
+@@ -34,6 +34,9 @@
+     // EOF (-1) and first time '=' character is encountered in stream.
+     // This approach makes the '=' padding characters completely optional.
+     if (eof && modulus != 0) {
++        if (buffer == null || buffer.length - pos < decodeSize) {
++            resizeBuffer();
++        }
+ 
+         x = x << 6;
+         switch (modulus) {

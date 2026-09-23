@@ -1,0 +1,11 @@
+--- official.patch
++++ thinkrepair.patch
+@@ -4,7 +4,7 @@
+              break;
+          default:
+              t.error(this);
+-+            r.unconsume();
+++            r.unconsume(); // fix line to unconsume the character before transitioning
+              t.transition(BeforeAttributeName);
+      }
+  }

@@ -1,0 +1,57 @@
+--- official.patch
++++ thinkrepair.patch
+@@ -1,10 +1,48 @@
+ --- original/Lang-51.java
+ +++ repaired/Lang-51.java
+-@@ -31,6 +31,7 @@
+-                     (str.charAt(1) == 'E' || str.charAt(1) == 'e') &&
+-                     (str.charAt(2) == 'S' || str.charAt(2) == 's');
+-             }
+-+            return false;
++@@ -5,7 +5,7 @@
++     // Optimisation provides same performance as before for interned 'true'.
++     // Similar performance for null, 'false', and other strings not length 2/3/4.
++     // 'true'/'TRUE' match 4 times slower, 'tRUE'/'True' 7 times slower.
++-    if (str == "true") {
+++    if ("true".equals(str)) {
++         return true;
++     }
++     if (str == null) {
++@@ -20,32 +20,12 @@
++                 (ch1 == 'n' || ch1 == 'N');
++         }
++         case 3: {
++-            char ch = str.charAt(0);
++-            if (ch == 'y') {
++-                return 
++-                    (str.charAt(1) == 'e' || str.charAt(1) == 'E') &&
++-                    (str.charAt(2) == 's' || str.charAt(2) == 'S');
++-            }
++-            if (ch == 'Y') {
++-                return 
++-                    (str.charAt(1) == 'E' || str.charAt(1) == 'e') &&
++-                    (str.charAt(2) == 'S' || str.charAt(2) == 's');
++-            }
+++            String lower = str.toLowerCase();
+++            return lower.equals("yes");
+          }
+          case 4: {
+-             char ch = str.charAt(0);
++-            char ch = str.charAt(0);
++-            if (ch == 't') {
++-                return 
++-                    (str.charAt(1) == 'r' || str.charAt(1) == 'R') &&
++-                    (str.charAt(2) == 'u' || str.charAt(2) == 'U') &&
++-                    (str.charAt(3) == 'e' || str.charAt(3) == 'E');
++-            }
++-            if (ch == 'T') {
++-                return 
++-                    (str.charAt(1) == 'R' || str.charAt(1) == 'r') &&
++-                    (str.charAt(2) == 'U' || str.charAt(2) == 'u') &&
++-                    (str.charAt(3) == 'E' || str.charAt(3) == 'e');
++-            }
+++            String lower = str.toLowerCase();
+++            return lower.equals("true");
++         }
++     }
++     return false;

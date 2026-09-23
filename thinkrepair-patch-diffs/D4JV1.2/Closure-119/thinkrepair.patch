@@ -1,0 +1,14 @@
+--- original/Closure-119.java
++++ repaired/Closure-119.java
+@@ -69,6 +69,11 @@
+               isSet = true;
+               type = Name.Type.OTHER;
+             }
++            // Add a check for catch blocks
++            if (parent.isCatch()) {
++              isSet = true;
++              type = Name.Type.OTHER;
++            }
+         }
+       }
+       name = n.getString();

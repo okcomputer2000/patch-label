@@ -1,0 +1,13 @@
+--- original/Lang-11.java
++++ repaired/Lang-11.java
+@@ -19,6 +19,10 @@
+                 end = 'z' + 1;
+                 start = ' ';                
+             }
++        }
++    } else {
++        if (end <= start) {
++            throw new IllegalArgumentException("Parameter end (" + end + ") must be greater than start (" + start + ")");
+         }
+     }
+ 

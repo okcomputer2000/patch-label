@@ -1,0 +1,33 @@
+--- official.patch
++++ thinkrepair.patch
+@@ -1,18 +1,21 @@
+ --- original/JxPath-22.java
+ +++ repaired/JxPath-22.java
+-@@ -15,12 +15,12 @@
++@@ -6,7 +6,7 @@
++     Element element = (Element) node;
++ 
++     String uri = element.getNamespaceURI();
++-    if (uri == null) {
+++    if (uri == null || uri.isEmpty()) {
++         String prefix = getPrefix(node);
++         String qname = prefix == null ? "xmlns" : "xmlns:" + prefix;
++ 
++@@ -15,7 +15,8 @@
+              if (aNode.getNodeType() == Node.ELEMENT_NODE) {
+                  Attr attr = ((Element) aNode).getAttributeNode(qname);
+                  if (attr != null) {
+ -                    return attr.getValue();
+-+                    uri = attr.getValue();
+-+                    break;
+++                    String value = attr.getValue();
+++                    return value.isEmpty() ? null : value;
+                  }
+              }
+              aNode = aNode.getParentNode();
+-         }
+--        return null;
+-     }
+--    return uri;
+-+    return "".equals(uri) ? null : uri;
+- }

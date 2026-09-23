@@ -1,0 +1,28 @@
+--- official.patch
++++ thinkrepair.patch
+@@ -1,11 +1,19 @@
+ --- original/Jsoup-90.java
+ +++ repaired/Jsoup-90.java
+-@@ -24,6 +24,8 @@
+-             return false;
++@@ -25,13 +25,12 @@
+          }
+  
+-+        if (end >= input.length)
+-+            return false;
+  
+-         while (i < end) {
+-             i++;
++-        while (i < end) {
++-            i++;
++-            o = input[i];
++-            if ((o & 0xC0) != 0x80) {
+++        for (int k = i + 1; k <= end; k++) {
+++            if (k >= input.length || (input[k] & 0xC0) != 0x80) {
++                 return false;
++             }
++         }
+++        i = end;
++     }
++     return true;
++ }

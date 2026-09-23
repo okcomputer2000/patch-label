@@ -1,0 +1,25 @@
+--- original/Closure-20.java
++++ repaired/Closure-20.java
+@@ -2,18 +2,18 @@
+   Preconditions.checkState(n.isCall());
+   Node callTarget = n.getFirstChild();
+   if (callTarget != null && callTarget.isName() &&
+-        callTarget.getString().equals("String")) {
++        callTarget.getString().equals("String") && n.getChildCount() == 2) {
+     // Fold String(a) to '' + (a) on immutable literals,
+     // which allows further optimizations
+     //
+     // We can't do this in the general case, because String(a) has
+     // slightly different semantics than '' + (a). See
+     // http://code.google.com/p/closure-compiler/issues/detail?id=759
+-    Node value = callTarget.getNext();
+-    if (value != null) {
++    Node argNode = callTarget.getNext();
++    if (NodeUtil.isImmutableValue(argNode)) {
+       Node addition = IR.add(
+           IR.string("").srcref(callTarget),
+-          value.detachFromParent());
++          argNode.detachFromParent());
+       n.getParent().replaceChild(n, addition);
+       reportCodeChange();
+       return addition;

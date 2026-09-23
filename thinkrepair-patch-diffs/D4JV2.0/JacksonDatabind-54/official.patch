@@ -1,0 +1,20 @@
+--- original/JacksonDatabind-54.java
++++ repaired/JacksonDatabind-54.java
+@@ -64,7 +64,7 @@
+             // always suppress nulls
+             suppressNulls = true;
+             // and for referential types, also "empty", which in their case means "absent"
+-            if (declaredType.isReferenceType()) {
++            if (actualType.isReferenceType()) {
+                 valueToSuppress = BeanPropertyWriter.MARKER_FOR_EMPTY;
+             }
+             break;
+@@ -80,7 +80,7 @@
+         case ALWAYS: // default
+         default:
+             // we may still want to suppress empty collections, as per [JACKSON-254]:
+-            if (declaredType.isContainerType()
++            if (actualType.isContainerType()
+                     && !_config.isEnabled(SerializationFeature.WRITE_EMPTY_JSON_ARRAYS)) {
+                 valueToSuppress = BeanPropertyWriter.MARKER_FOR_EMPTY;
+             }

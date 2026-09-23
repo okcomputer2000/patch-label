@@ -1,0 +1,12 @@
+--- official.patch
++++ thinkrepair.patch
+@@ -5,6 +5,7 @@
+          return _detectBindAndReadValues(_dataFormatReaders.findFormat(src, offset, length), false);
+      }
+ -    return _bindAndReadValues(_considerFilter(_parserFactory.createParser(src), 
+-+    return _bindAndReadValues(_considerFilter(_parserFactory.createParser(src, offset, length),
+-             true));
++-            true));
+++    JsonParser jp = _parserFactory.createParser(src, offset, length); // Fix the argument initialization
+++    return _bindAndReadValues(_considerFilter(jp, true));
+  }

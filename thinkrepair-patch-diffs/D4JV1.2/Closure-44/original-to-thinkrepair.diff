@@ -1,0 +1,16 @@
+--- original/Closure-44.java
++++ thinkrepair/Closure-44.java
+@@ -11,11 +11,13 @@
+     // need space to separate. This is not pretty printing.
+     // For example: "return foo;"
+     append(" ");
++  } else if (getLastChar() == '/' && c == '/') {
+     // Do not allow a forward slash to appear after a DIV.
+     // For example,
+     // REGEXP DIV REGEXP
+     // is valid and should print like
+     // / // / /
++    append(" ");
+   }
+ 
+   append(newcode);

@@ -1,0 +1,18 @@
+--- official.patch
++++ thinkrepair.patch
+@@ -1,9 +1,13 @@
+ --- original/Jsoup-41.java
+ +++ repaired/Jsoup-41.java
+-@@ -5,5 +5,5 @@
++@@ -5,5 +5,9 @@
+  
+      Element element = (Element) o;
+  
+ -    return this == o;
+-+    return tag.equals(element.tag);
+++    if (!this.tag().equals(element.tag())) { // compare tags as well
+++        return false;
+++    }
+++
+++    return Objects.equals(this.attributes(), element.attributes()); // compare attribute maps
+  }

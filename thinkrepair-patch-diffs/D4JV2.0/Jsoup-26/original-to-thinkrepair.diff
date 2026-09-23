@@ -1,0 +1,12 @@
+--- original/Jsoup-26.java
++++ thinkrepair/Jsoup-26.java
+@@ -2,7 +2,9 @@
+     Validate.notNull(dirtyDocument);
+ 
+     Document clean = Document.createShell(dirtyDocument.baseUri());
++    if (dirtyDocument.body() != null) {
+         copySafeNodes(dirtyDocument.body(), clean.body());
++    }
+ 
+     return clean;
+ }

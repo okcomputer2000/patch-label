@@ -1,0 +1,12 @@
+--- original/JacksonDatabind-42.java
++++ thinkrepair/JacksonDatabind-42.java
+@@ -4,5 +4,8 @@
+         return URI.create("");
+     }
+     // As per [databind#1123], Locale too
+-    return super._deserializeFromEmptyString();
++    if (_kind == STD_LOCALE) {
++        return Locale.ROOT;
++    }
++    return super._deserializeFromEmptyString(); 
+ }
