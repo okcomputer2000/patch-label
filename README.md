@@ -195,6 +195,15 @@ The core shape of `experiment.json` is:
 }
 ```
 
+### Included Example Result
+
+The repository includes a verified trigger-test run for `D4JV2.0/Compress-44`, making it possible to inspect a concrete CFG, dynamic trace, path set, and path labels directly on GitHub:
+
+- [buggy `experiment.json`](results/D4JV2.0/Compress-44/buggy/experiment.json): the null-argument constructor test follows `ENTRY -> B0 -> EXIT` and is labeled `false`;
+- [patched `experiment.json`](results/D4JV2.0/Compress-44/patched/experiment.json): the applied null checks add branches, the expected exception is thrown, and the same test is labeled `true`.
+
+This included result uses `--test-scope trigger --max-tests 1` as a compact, reproducible example. It is not a full `--test-scope all` experiment.
+
 ## Development and Verification
 
 ```bash
@@ -204,4 +213,4 @@ uv run patch-label build-helper --force
 uv run patch-label doctor
 ```
 
-The helper JAR, project checkouts, and caches are stored under `.patch-label/`. Final experiment data is stored under `results/`. Neither directory is committed by default.
+The helper JAR, project checkouts, and caches are stored under `.patch-label/`. Final experiment data is stored under `results/`. Newly generated contents of both directories are ignored by default; publishable result snapshots may be added explicitly, as with the included `Compress-44` example.

@@ -1,0 +1,14 @@
+{
+  "scope": "trigger",
+  "count": 1,
+  "tests": [
+    {
+      "selector": "org.apache.commons.compress.utils.ChecksumCalculatingInputStreamTest::testClassInstantiationWithParameterBeingNullThrowsNullPointerExceptionOne",
+      "class_name": "org.apache.commons.compress.utils.ChecksumCalculatingInputStreamTest",
+      "method_name": "testClassInstantiationWithParameterBeingNullThrowsNullPointerExceptionOne",
+      "display_name": "org.apache.commons.compress.utils.ChecksumCalculatingInputStreamTest::testClassInstantiationWithParameterBeingNullThrowsNullPointerExceptionOne",
+      "granularity": "method"
+    }
+  ],
+  "discovery_errors": []
+}

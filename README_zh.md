@@ -195,6 +195,15 @@ experiment.json             聚合后的 G、路径集、标签集和摘要
 }
 ```
 
+### 已包含的示例结果
+
+仓库包含一次经过验证的 `D4JV2.0/Compress-44` trigger 测试运行，可以直接在 GitHub 上查看具体的 CFG、动态轨迹、路径集和路径标签：
+
+- [buggy `experiment.json`](results/D4JV2.0/Compress-44/buggy/experiment.json)：空参数构造函数测试经过 `ENTRY -> B0 -> EXIT`，标签为 `false`；
+- [patched `experiment.json`](results/D4JV2.0/Compress-44/patched/experiment.json)：补丁增加空值检查分支并抛出预期异常，同一测试的标签变为 `true`。
+
+该示例使用 `--test-scope trigger --max-tests 1`，目的是提供紧凑、可复现的结果；它不是完整的 `--test-scope all` 实验。
+
 ## 开发与验证
 
 ```bash
@@ -204,4 +213,4 @@ uv run patch-label build-helper --force
 uv run patch-label doctor
 ```
 
-辅助 JAR、项目 checkout 和缓存位于 `.patch-label/`；最终实验数据位于 `results/`。两者默认不提交到 Git。
+辅助 JAR、项目 checkout 和缓存位于 `.patch-label/`；最终实验数据位于 `results/`。两个目录中新生成的内容默认忽略；适合公开的结果快照可以像已包含的 `Compress-44` 示例一样显式加入仓库。
