@@ -15,6 +15,7 @@ public final class Recorder {
     private static volatile Path outputDirectory;
     private static volatile long maxEvents = 1_000_000L;
     private static long sequence = 0L;
+    private static long droppedEvents = 0L;
     private static boolean configured = false;
 
     private Recorder() {}
@@ -38,7 +39,11 @@ public final class Recorder {
 
     public static void hit(String nodeId) {
         synchronized (LOCK) {
-            if (!configured || sequence >= maxEvents) {
+            if (!configured) {
+                return;
+            }
+            if (sequence >= maxEvents) {
+                droppedEvents++;
                 return;
             }
             sequence++;
@@ -53,7 +58,7 @@ public final class Recorder {
 
     private static void flush() {
         synchronized (LOCK) {
-            if (!configured || EVENTS.length() == 0) {
+            if (!configured) {
                 return;
             }
             try {
@@ -66,7 +71,9 @@ public final class Recorder {
                         StandardCharsets.UTF_8,
                         StandardOpenOption.CREATE_NEW,
                         StandardOpenOption.WRITE)) {
-                    writer.write("# sequence\\tthread\\tnode_id\n");
+                    writer.write("# sequence\tthread\tnode_id\n");
+                    writer.write("# trace_truncated\t" + (droppedEvents > 0) + "\n");
+                    writer.write("# dropped_events\t" + droppedEvents + "\n");
                     writer.write(EVENTS.toString());
                 }
             } catch (IOException exception) {

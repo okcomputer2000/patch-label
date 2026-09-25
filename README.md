@@ -12,7 +12,7 @@ English | [中文](README_zh.md)
 2. builds bytecode-level control-flow graphs (CFGs) for the classes reported as modified by Defects4J;
 3. discovers test methods and runs the selected test suite one test at a time;
 4. uses a Java agent to record the ordered CFG basic blocks visited by each test;
-5. labels static paths as `true`, `false`, or `untested`; and
+5. records whether each static path was observed in a complete trace and the outcome of the covering test; and
 6. writes `G = (nodes, edges)`, `SET(paths)`, `SET(labels)`, and the raw execution traces.
 
 By default, the pipeline runs every discoverable test method from `tests.all`. The experiment is intentionally large: the current dataset contains 205 examples, and every example has both a `buggy` and a `patched` phase. Per-test intermediate results are persisted so interrupted runs can resume.
@@ -103,7 +103,7 @@ Common options:
 - `--max-loop-visits N`: limits how many times an ordinary node may appear in an enumerated static path; the default is 2.
 - `--max-paths-per-method N`: limits each method to at most `N` stored static paths; the default is 1000. Any truncation is recorded in `path_enumeration_truncations`.
 - `--fresh`: deletes and rebuilds the checkouts and test caches managed by this tool.
-- `--no-resume`: ignores existing intermediate results and reruns tests; resuming is enabled by default.
+- `--no-resume`: checks out and runs again without reusing results. By default, per-test results are reused only when the run fingerprint matches; it covers the patch, implementation sources, helper JAR, Defects4J revision, and run options.
 - `--keep-going`: continues after an example fails and writes the collected errors to `results/failures.json`.
 
 ## CFG and Path Definitions
@@ -134,13 +134,13 @@ In addition, `observed_paths` preserves the basic-block sequences actually produ
 
 Each static path is associated with test outcomes according to these rules:
 
-- if a path appears in a test's method trace and the test passes: `{"status": "true", "test_id": ...}`;
-- if a path appears in a failing or timed-out test: `{"status": "false", "test_id": ...}`; and
-- if no test covers the path: `{"status": "untested", "test_id": null}`.
+- if a path appears in a complete, untruncated method trace: `{"observation": "observed", "test_outcome": "passed|failed|timed_out|error", "test_id": ...}`;
+- if no path is observed and evidence is complete: `{"observation": "not_observed", "test_outcome": null, "test_id": null}`; and
+- if no path is observed but evidence is incomplete: `{"observation": "unknown", "test_outcome": null, "test_id": null}`.
 
-The same path can have multiple labels because multiple tests may cover it. A `true` outcome requires both a zero Defects4J command exit code and an empty `failing_tests` list. If method-level test discovery fails, execution falls back to the test class and records the error in `test_discovery_errors`; these results use `"granularity": "class"` and are never silently presented as method-level results.
+The same path can have multiple observations because multiple tests may cover it. `test_outcome` describes the whole test, not the correctness of the path. Passing requires both a zero Defects4J command exit code and an empty `failing_tests` list. If method-level test discovery fails, execution falls back to the test class and records the error in `test_discovery_errors`; these results use `"granularity": "class"` and are never silently presented as method-level results. Trace files are separated by thread. Incomplete method invocations are listed in `evidence_issues` and cannot establish a path label.
 
-The `coverage` object also lists `covered_nodes`, `untested_nodes`, `covered_edges`, and `untested_edges`, allowing structural coverage to be inspected independently of the static path-enumeration bound.
+The `coverage` object lists `covered_nodes`, `unobserved_nodes`, `covered_edges`, and `unobserved_edges`. "Unobserved" means absent from the captured evidence; it does not prove a path was never exercised when `evidence_issues` is nonempty.
 
 ## Patch Application
 
@@ -157,16 +157,17 @@ Dataset patches use placeholder file names such as `original/Project-ID.java` an
 The final result for each phase is written to:
 
 ```text
-results/<dataset-version>/<Project-ID>/<buggy|patched>/experiment.json
+results/<dataset-version>/<Project-ID>/<buggy|patched>/runs/<run-fingerprint>/experiment.json
 ```
 
-The same directory also contains:
+Each fingerprint gets its own directory, so a new configuration preserves earlier results. The same directory also contains:
 
 ```text
 graph.json                  Raw CFG
 graph.log                   Graph-generation log
 compile.log                 Compilation log
 test-manifest.json          Test-discovery result
+run-manifest.json           Run fingerprint for safe resumption
 patch-application.json      Patch-location record for the patched phase
 tests/*.json.gz             Resumable per-test results and traces
 test-logs/*.log             Complete per-test Defects4J output
@@ -177,6 +178,8 @@ The core shape of `experiment.json` is:
 
 ```json
 {
+  "schema_version": "2.0",
+  "run_fingerprint": "...",
   "graph": {
     "nodes": [],
     "edges": []
@@ -185,10 +188,11 @@ The core shape of `experiment.json` is:
     {"id": "path:...", "method_id": "...", "nodes": [], "kind": "bounded-entry-exit"}
   ],
   "labels": [
-    {"path_id": "path:...", "status": "true", "test_id": "Class::method"},
-    {"path_id": "path:...", "status": "untested", "test_id": null}
+    {"path_id": "path:...", "observation": "observed", "test_outcome": "passed", "test_id": "Class::method"},
+    {"path_id": "path:...", "observation": "not_observed", "test_outcome": null, "test_id": null}
   ],
   "observed_paths": [],
+  "evidence_issues": [],
   "coverage": {},
   "tests": [],
   "summary": {}
@@ -199,10 +203,10 @@ The core shape of `experiment.json` is:
 
 The repository includes a verified trigger-test run for `D4JV2.0/Compress-44`, making it possible to inspect a concrete CFG, dynamic trace, path set, and path labels directly on GitHub:
 
-- [buggy `experiment.json`](results/D4JV2.0/Compress-44/buggy/experiment.json): the null-argument constructor test follows `ENTRY -> B0 -> EXIT` and is labeled `false`;
-- [patched `experiment.json`](results/D4JV2.0/Compress-44/patched/experiment.json): the applied null checks add branches, the expected exception is thrown, and the same test is labeled `true`.
+- [buggy `experiment.json`](results/D4JV2.0/Compress-44/buggy/experiment.json): the null-argument constructor test follows `ENTRY -> B0 -> EXIT` and fails;
+- [patched `experiment.json`](results/D4JV2.0/Compress-44/patched/experiment.json): the applied null checks add branches, the expected exception is thrown, and the same test passes.
 
-This included result uses `--test-scope trigger --max-tests 1` as a compact, reproducible example. It is not a full `--test-scope all` experiment.
+This included result uses the legacy 1.0 schema and `--test-scope trigger --max-tests 1`. It is not a full `--test-scope all` experiment. New runs use schema 2.0.
 
 ## Development and Verification
 

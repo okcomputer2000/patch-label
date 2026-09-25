@@ -12,7 +12,7 @@ from typing import Any, Literal
 
 from .defects4j import Defects4J, split_exported_list
 from .graph import enumerate_static_paths, label_graph
-from .io import read_json_gz, write_json, write_json_gz
+from .io import read_json, read_json_gz, write_json, write_json_gz
 from .java_helper import build_helper
 from .models import Example, Phase, TestCase, TestResult
 from .patching import apply_context_patch, class_source_candidates
@@ -53,29 +53,55 @@ def _write_log(path: Path, stdout: str, stderr: str) -> None:
     path.write_text(stdout + ("\n--- STDERR ---\n" if stderr else "") + stderr, encoding="utf-8")
 
 
-def _parse_trace_files(trace_dir: Path) -> tuple[list[str], list[list[str]]]:
+def _parse_trace_files(trace_dir: Path) -> tuple[list[str], list[dict[str, Any]], int]:
     paths = sorted(trace_dir.glob("trace-*.tsv"))
-    traces: list[list[str]] = []
+    traces: list[dict[str, Any]] = []
+    dropped_events = 0
     for path in paths:
-        events: list[tuple[int, str]] = []
+        events_by_thread: dict[str, list[tuple[int, str]]] = {}
+        metadata: dict[str, str] = {}
         for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
-            if not line or line.startswith("#"):
+            if not line:
+                continue
+            if line.startswith("# "):
+                key, _, value = line[2:].partition("\t")
+                metadata[key] = value
                 continue
             parts = line.split("\t", 2)
             if len(parts) != 3:
-                continue
+                raise ExperimentError(f"Malformed trace event in {path}: {line!r}")
             try:
                 sequence = int(parts[0])
             except ValueError:
-                continue
-            events.append((sequence, parts[2]))
-        if events:
-            traces.append([node_id for _, node_id in sorted(events)])
-    return [path.name for path in paths], traces
+                raise ExperimentError(f"Invalid trace sequence in {path}: {line!r}") from None
+            events_by_thread.setdefault(parts[1], []).append((sequence, parts[2]))
+        if metadata.get("trace_truncated") not in {"true", "false"}:
+            raise ExperimentError(f"Missing trace integrity metadata in {path}")
+        try:
+            file_dropped = int(metadata["dropped_events"])
+        except (KeyError, ValueError):
+            raise ExperimentError(f"Invalid dropped event count in {path}") from None
+        if file_dropped < 0 or (file_dropped > 0) != (metadata["trace_truncated"] == "true"):
+            raise ExperimentError(f"Inconsistent trace integrity metadata in {path}")
+        dropped_events += file_dropped
+        for thread_id, events in sorted(events_by_thread.items()):
+            traces.append({
+                "file": path.name,
+                "thread_id": thread_id,
+                "nodes": [node_id for _, node_id in sorted(events)],
+            })
+    return [path.name for path in paths], traces, dropped_events
 
 
 class ExperimentRunner:
     def __init__(self, config: ExperimentConfig):
+        for name in ("max_tests", "max_loop_visits", "max_paths_per_method"):
+            value = getattr(config, name)
+            if value is not None and value < 1:
+                raise ExperimentError(f"{name} must be at least 1")
+        for name in ("compile_timeout", "test_timeout", "discovery_timeout"):
+            if getattr(config, name) <= 0:
+                raise ExperimentError(f"{name} must be positive")
         self.config = config
         self.d4j = Defects4J(config.defects4j_dir)
         if not self.d4j.initialized:
@@ -84,6 +110,38 @@ class ExperimentRunner:
             )
         self.helper_jar = build_helper(config.repo_root, config.state_dir)
 
+    def _run_fingerprint(self, example: Example, phase: Phase) -> str:
+        digest = hashlib.sha256()
+        for root, pattern in ((self.config.repo_root / "src", "*.py"),
+                              (self.config.repo_root / "java" / "src", "*.java")):
+            for path in sorted(root.rglob(pattern)):
+                digest.update(path.relative_to(self.config.repo_root).as_posix().encode("utf-8"))
+                digest.update(path.read_bytes())
+        for path in (self.config.repo_root / "pyproject.toml", example.patch_file, self.helper_jar):
+            digest.update(path.read_bytes())
+        revision = run_command(
+            ["git", "-C", str(self.config.defects4j_dir), "rev-parse", "HEAD"],
+            cwd=self.config.repo_root,
+        ).stdout.strip()
+        java_version = run_command(["java", "-version"], cwd=self.config.repo_root).output.strip()
+        identity = {
+            "schema_version": "2.0",
+            "example": f"{example.dataset_version}/{example.key}",
+            "phase": phase,
+            "defects4j_revision": revision,
+            "java_home": str(self.d4j.java_home),
+            "java_version": java_version,
+            "test_scope": self.config.test_scope,
+            "max_tests": self.config.max_tests,
+            "compile_timeout": self.config.compile_timeout,
+            "test_timeout": self.config.test_timeout,
+            "discovery_timeout": self.config.discovery_timeout,
+            "max_loop_visits": self.config.max_loop_visits,
+            "max_paths_per_method": self.config.max_paths_per_method,
+            "inputs_sha256": digest.hexdigest(),
+        }
+        return hashlib.sha256(json.dumps(identity, sort_keys=True).encode("utf-8")).hexdigest()
+
     def run(self, example: Example, phases: list[Phase]) -> list[Path]:
         outputs: list[Path] = []
         for phase in phases:
@@ -91,18 +149,38 @@ class ExperimentRunner:
         return outputs
 
     def run_phase(self, example: Example, phase: Phase) -> Path:
-        output_dir = self.config.output_dir / example.dataset_version / example.key / phase
+        fingerprint = self._run_fingerprint(example, phase)
+        output_dir = (self.config.output_dir / example.dataset_version / example.key
+                      / phase / "runs" / fingerprint)
         final_file = output_dir / "experiment.json"
-        if final_file.is_file() and self.config.resume and not self.config.fresh:
-            return final_file
-        if self.config.fresh and output_dir.exists():
+        manifest_file = output_dir / "run-manifest.json"
+        manifest_matches = False
+        if manifest_file.is_file():
+            try:
+                manifest_matches = read_json(manifest_file).get("run_fingerprint") == fingerprint
+            except (ValueError, OSError, AttributeError):
+                pass
+        if self.config.resume and not self.config.fresh and manifest_matches and final_file.is_file():
+            try:
+                if read_json(final_file).get("run_fingerprint") == fingerprint:
+                    return final_file
+            except (ValueError, OSError, AttributeError):
+                pass
+        rebuild = self.config.fresh or not self.config.resume
+        if output_dir.exists() and not manifest_matches and not rebuild:
+            raise ExperimentError(f"Run directory has no matching manifest: {output_dir}; use --fresh to rebuild it")
+        if rebuild and output_dir.exists():
             if not output_dir.resolve().is_relative_to(self.config.output_dir.resolve()):
                 raise ExperimentError(f"Refusing to delete unmanaged output directory: {output_dir}")
             shutil.rmtree(output_dir)
 
-        checkout = self.config.state_dir / "worktrees" / example.dataset_version / example.key / phase
-        self.d4j.checkout(example, checkout, fresh=self.config.fresh)
+        checkout = (self.config.state_dir / "worktrees-v2" / example.dataset_version
+                    / example.key / phase / fingerprint)
+        # A partial previous run may have already applied the patch. Always restore
+        # the original checkout before rebuilding an incomplete phase.
+        self.d4j.checkout(example, checkout, fresh=checkout.exists())
         output_dir.mkdir(parents=True, exist_ok=True)
+        write_json(manifest_file, {"schema_version": "2.0", "run_fingerprint": fingerprint})
         metadata = self._metadata(checkout)
 
         patch_manifest: dict[str, Any] | None = None
@@ -145,6 +223,7 @@ class ExperimentRunner:
                     runtime_jar,
                     includes_file,
                     test,
+                    fingerprint,
                 )
                 for test in tests
             ]
@@ -156,9 +235,10 @@ class ExperimentRunner:
             max_loop_visits=self.config.max_loop_visits,
             max_paths_per_method=self.config.max_paths_per_method,
         )
-        labels = label_graph(graph, static_paths, test_results)
+        labels = label_graph(graph, static_paths, test_results, discovery_incomplete=bool(discovery_errors))
         document = {
-            "schema_version": "1.0",
+            "schema_version": "2.0",
+            "run_fingerprint": fingerprint,
             "generated_at_epoch_seconds": time.time(),
             "example": example.to_dict(),
             "phase": phase,
@@ -182,9 +262,14 @@ class ExperimentRunner:
                 "label_count": len(labels["labels"]),
                 "test_count": len(test_results),
                 "passing_test_count": sum(result["status"] == "true" for result in test_results),
-                "failing_test_count": sum(result["status"] == "false" for result in test_results),
-                "untested_node_count": len(labels["coverage"]["untested_nodes"]),
-                "untested_edge_count": len(labels["coverage"]["untested_edges"]),
+                "failing_test_count": sum(result["execution_status"] == "failed" for result in test_results),
+                "timed_out_test_count": sum(result["execution_status"] == "timed_out" for result in test_results),
+                "errored_test_count": sum(result["execution_status"] == "error" for result in test_results),
+                "unobserved_node_count": len(labels["coverage"]["unobserved_nodes"]),
+                "unobserved_edge_count": len(labels["coverage"]["unobserved_edges"]),
+                "evidence_issue_count": len(labels["evidence_issues"]),
+                "trace_truncated_test_count": sum(result["trace_truncated"] for result in test_results),
+                "dropped_event_count": sum(result["dropped_events"] for result in test_results),
             },
         }
         write_json(final_file, document)
@@ -281,11 +366,17 @@ class ExperimentRunner:
         runtime_jar: Path,
         includes_file: Path,
         test: TestCase,
+        fingerprint: str,
     ) -> dict[str, Any]:
         stem = _safe_name(test.selector)
         result_file = output_dir / "tests" / f"{stem}.json.gz"
         if result_file.is_file() and self.config.resume and not self.config.fresh:
-            return read_json_gz(result_file)
+            try:
+                cached = read_json_gz(result_file)
+                if cached.get("run_fingerprint") == fingerprint:
+                    return cached
+            except (ValueError, OSError, AttributeError):
+                pass
 
         trace_dir = runtime_dir / "traces" / stem
         if trace_dir.exists():
@@ -297,6 +388,7 @@ class ExperimentRunner:
             encoding="utf-8",
         )
         option = f"-javaagent:{runtime_jar}={properties}"
+        timed_out = False
         try:
             command_result, failures = self.d4j.test(
                 checkout,
@@ -307,18 +399,31 @@ class ExperimentRunner:
         except CommandError as exc:
             command_result = exc.result
             failures = []
-        trace_names, traces = _parse_trace_files(trace_dir)
+            timed_out = True
+        trace_names, traces, dropped_events = _parse_trace_files(trace_dir)
         status: Literal["true", "false"] = (
             "true" if command_result.return_code == 0 and not failures else "false"
         )
+        if timed_out:
+            execution_status = "timed_out"
+        elif status == "true":
+            execution_status = "passed"
+        elif failures:
+            execution_status = "failed"
+        else:
+            execution_status = "error"
         result = TestResult(
             test=test,
             status=status,
+            execution_status=execution_status,
             return_code=command_result.return_code,
             duration_seconds=command_result.duration_seconds,
             failing_tests=failures,
             trace_files=trace_names,
             traces=traces,
+            trace_truncated=dropped_events > 0,
+            dropped_events=dropped_events,
+            run_fingerprint=fingerprint,
             output_tail=command_result.output[-12000:],
         ).to_dict()
         _write_log(

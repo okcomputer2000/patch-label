@@ -4,7 +4,6 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, Literal
 
-LabelStatus = Literal["true", "false", "untested"]
 Phase = Literal["buggy", "patched"]
 
 
@@ -47,11 +46,15 @@ class TestCase:
 class TestResult:
     test: TestCase
     status: Literal["true", "false"]
+    execution_status: Literal["passed", "failed", "timed_out", "error"]
     return_code: int
     duration_seconds: float
     failing_tests: list[str] = field(default_factory=list)
     trace_files: list[str] = field(default_factory=list)
-    traces: list[list[str]] = field(default_factory=list)
+    traces: list[dict[str, Any]] = field(default_factory=list)
+    trace_truncated: bool = False
+    dropped_events: int = 0
+    run_fingerprint: str = ""
     output_tail: str = ""
 
     def to_dict(self) -> dict[str, Any]:

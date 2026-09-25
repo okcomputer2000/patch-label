@@ -3,6 +3,7 @@ import shutil
 from pathlib import Path
 
 from patch_label.java_helper import build_helper
+from patch_label.experiment import _parse_trace_files
 from patch_label.process import run_command
 
 
@@ -70,3 +71,18 @@ def test_java_helper_builds_graph_and_records_ordered_trace(tmp_path: Path) -> N
     )
     assert "sample.Branchy#classify(I)I:ENTRY" in trace_text
     assert "sample.Branchy#classify(I)I:EXIT" in trace_text
+
+    limited_dir = tmp_path / "limited-traces"
+    limited_properties = tmp_path / "limited-agent.properties"
+    limited_properties.write_text(
+        f"outputDir={limited_dir}\nincludesFile={includes}\nmaxEvents=1\n",
+        encoding="utf-8",
+    )
+    run_command(
+        ["java", f"-javaagent:{runtime_jar}={limited_properties}", "-cp", str(classes),
+         "sample.Branchy", "2"],
+        cwd=repo_root,
+    )
+    names, traces, dropped = _parse_trace_files(limited_dir)
+    assert names and traces
+    assert dropped > 0

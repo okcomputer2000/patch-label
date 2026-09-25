@@ -97,12 +97,12 @@ def split_method_invocations(
             elif stack:
                 stack[-1].append(node_id)
                 if node_id == exit_node:
-                    invocations.append({"method_id": method_id, "nodes": stack.pop()})
+                    invocations.append({"method_id": method_id, "nodes": stack.pop(), "complete": True})
             else:
                 incomplete.append(node_id)
-        invocations.extend({"method_id": method_id, "nodes": value} for value in stack)
+        invocations.extend({"method_id": method_id, "nodes": value, "complete": False} for value in stack)
         if incomplete:
-            invocations.append({"method_id": method_id, "nodes": incomplete})
+            invocations.append({"method_id": method_id, "nodes": incomplete, "complete": False})
     return invocations
 
 
@@ -117,6 +117,8 @@ def label_graph(
     graph: dict[str, Any],
     static_paths: list[dict[str, Any]],
     tests: list[dict[str, Any]],
+    *,
+    discovery_incomplete: bool = False,
 ) -> dict[str, Any]:
     node_method = {node["id"]: node["method_id"] for node in graph["nodes"]}
     graph_edges = {(edge["source"], edge["target"]) for edge in graph["edges"]}
@@ -124,13 +126,30 @@ def label_graph(
     covered_edges: set[tuple[str, str]] = set()
     observed_paths: list[dict[str, Any]] = []
     invocations_by_test: dict[str, list[dict[str, Any]]] = {}
+    evidence_issues: list[dict[str, str]] = []
+    if not tests:
+        evidence_issues.append({"test_id": "", "reason": "no_tests_selected"})
+    if discovery_incomplete:
+        evidence_issues.append({"test_id": "", "reason": "test_discovery_incomplete"})
 
     for test in tests:
         selector = test["test"]["selector"]
         invocations: list[dict[str, Any]] = []
+        if not test.get("trace_files") and not test.get("traces"):
+            evidence_issues.append({"test_id": selector, "reason": "no_trace_file"})
+        elif not test.get("traces"):
+            evidence_issues.append({"test_id": selector, "reason": "no_trace_events"})
+        if test.get("trace_truncated"):
+            evidence_issues.append({"test_id": selector, "reason": "trace_truncated"})
+        if test.get("execution_status") == "timed_out":
+            evidence_issues.append({"test_id": selector, "reason": "test_timed_out"})
+        if test.get("execution_status") == "error":
+            evidence_issues.append({"test_id": selector, "reason": "test_execution_error"})
         for trace in test.get("traces", []):
-            trace_invocations = split_method_invocations(trace, node_method)
-            invocations.extend(trace_invocations)
+            events = trace["nodes"] if isinstance(trace, dict) else trace
+            trace_invocations = split_method_invocations(events, node_method)
+            if any(not item["complete"] for item in trace_invocations):
+                evidence_issues.append({"test_id": selector, "reason": "incomplete_invocation"})
             covered_nodes.update(node for invocation in trace_invocations for node in invocation["nodes"])
             for invocation in trace_invocations:
                 nodes = invocation["nodes"]
@@ -143,9 +162,15 @@ def label_graph(
                         "method_id": invocation["method_id"],
                         "nodes": nodes,
                         "test_id": selector,
-                        "status": test["status"],
+                        "complete": invocation["complete"],
+                        "trace_truncated": bool(test.get("trace_truncated")),
+                        "test_outcome": test.get("execution_status", "passed" if test["status"] == "true" else "failed"),
+                        "trace_file": trace.get("file") if isinstance(trace, dict) else None,
+                        "thread_id": trace.get("thread_id") if isinstance(trace, dict) else None,
                     }
                 )
+            if not test.get("trace_truncated"):
+                invocations.extend(item for item in trace_invocations if item["complete"])
         invocations_by_test[selector] = invocations
 
     labels: list[dict[str, Any]] = []
@@ -163,16 +188,23 @@ def label_graph(
                 labels.append(
                     {
                         "path_id": path["id"],
-                        "status": test["status"],
+                        "observation": "observed",
+                        "test_outcome": test.get("execution_status", "passed" if test["status"] == "true" else "failed"),
                         "test_id": selector,
                     }
                 )
         if matches == 0:
-            labels.append({"path_id": path["id"], "status": "untested", "test_id": None})
+            labels.append({
+                "path_id": path["id"],
+                "observation": "unknown" if evidence_issues else "not_observed",
+                "test_outcome": None,
+                "test_id": None,
+            })
 
     deduplicated_observed = list(
         {
-            (item["id"], item["test_id"], item["status"]): item for item in observed_paths
+            (item["id"], item["test_id"], item["complete"], item["trace_truncated"], item["trace_file"], item["thread_id"]): item
+            for item in observed_paths
         }.values()
     )
     nonvirtual_nodes = {
@@ -185,13 +217,17 @@ def label_graph(
             deduplicated_observed,
             key=lambda item: (item["test_id"], item["method_id"], item["id"]),
         ),
+        "evidence_issues": sorted(
+            { (item["test_id"], item["reason"]): item for item in evidence_issues }.values(),
+            key=lambda item: (item["test_id"], item["reason"]),
+        ),
         "coverage": {
             "covered_nodes": sorted(covered_nodes),
-            "untested_nodes": sorted(nonvirtual_nodes - covered_nodes),
+            "unobserved_nodes": sorted(nonvirtual_nodes - covered_nodes),
             "covered_edges": [
                 {"source": source, "target": target} for source, target in sorted(covered_edges)
             ],
-            "untested_edges": [
+            "unobserved_edges": [
                 {"source": source, "target": target}
                 for source, target in sorted(graph_edges - covered_edges)
             ],

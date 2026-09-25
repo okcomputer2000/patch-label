@@ -12,7 +12,7 @@
 2. 为 Defects4J 报告的修改类生成字节码级控制流图（CFG）；
 3. 枚举测试方法，并逐测试执行完整测试集合；
 4. 用 Java agent 记录测试经过的有序 CFG 基本块；
-5. 把静态路径标为 `true`、`false` 或 `untested`；
+5. 记录静态路径是否被完整轨迹观测到，以及覆盖它的测试结果；
 6. 输出 `G = (nodes, edges)`、`SET(paths)`、`SET(labels)` 及原始测试轨迹。
 
 默认会执行 `tests.all` 中每个可发现的测试方法。实验规模很大：当前数据集包含 205 个样例，每个样例有 `buggy` 和 `patched` 两个阶段。流水线按测试保存中间结果，可中断后继续。
@@ -103,7 +103,7 @@ uv run patch-label run --phase both --test-scope all --keep-going
 - `--max-loop-visits N`：静态路径枚举时每个普通节点最多出现次数，默认 2。
 - `--max-paths-per-method N`：每个方法最多保存的静态路径数，默认 1000；触发限制会写入 `path_enumeration_truncations`。
 - `--fresh`：删除并重建由本工具管理的 checkout 和测试缓存。
-- `--no-resume`：忽略已有结果重新执行；默认按测试恢复。
+- `--no-resume`：重新 checkout 并执行，不复用已有结果；默认仅在运行指纹一致时按测试恢复。指纹包括补丁、实现源码、辅助 JAR、Defects4J 版本及运行参数。
 - `--keep-going`：一个样例失败后继续，最终把错误写入 `results/failures.json`。
 
 ## CFG 和路径定义
@@ -134,13 +134,13 @@ uv run patch-label run --phase both --test-scope all --keep-going
 
 每个静态路径与测试结果按以下规则关联：
 
-- 路径出现在某个测试的方法调用轨迹中，且该测试成功：`{"status": "true", "test_id": ...}`；
-- 路径出现在某个失败或超时测试中：`{"status": "false", "test_id": ...}`；
-- 没有任何测试覆盖该路径：`{"status": "untested", "test_id": null}`。
+- 路径出现在完整且未截断的方法调用轨迹中：`{"observation": "observed", "test_outcome": "passed|failed|timed_out|error", "test_id": ...}`；
+- 未观测到且证据完整：`{"observation": "not_observed", "test_outcome": null, "test_id": null}`；
+- 未观测到，但有轨迹截断、缺失、测试超时或不完整调用：`{"observation": "unknown", "test_outcome": null, "test_id": null}`。
 
-同一路径可以有多个标签，因为多个测试可能覆盖它。`true` 的判定要求 Defects4J 命令返回 0 且 `failing_tests` 为空。测试方法发现失败时会降级为测试类级执行，并在 `test_discovery_errors` 中记录；这类结果的 `granularity` 为 `class`，不会静默伪装成方法级结果。
+同一路径可以有多个观测记录，因为多个测试可能覆盖它。`test_outcome` 是整个测试的结果，不代表路径本身正确或错误。测试通过要求 Defects4J 命令返回 0 且 `failing_tests` 为空。测试方法发现失败时会降级为测试类级执行，并在 `test_discovery_errors` 中记录；这类结果的 `granularity` 为 `class`，不会静默伪装成方法级结果。轨迹按文件和线程分开处理；未正常结束的方法调用列入 `evidence_issues`，不用于确定路径标签。
 
-`coverage` 同时给出 `covered_nodes`、`untested_nodes`、`covered_edges` 和 `untested_edges`，便于不依赖路径枚举上限地检查结构覆盖。
+`coverage` 同时给出 `covered_nodes`、`unobserved_nodes`、`covered_edges` 和 `unobserved_edges`。“未观测到”仅指已采集证据中没有；当 `evidence_issues` 非空时，不能据此断言路径从未被执行。
 
 ## 补丁应用
 
@@ -157,16 +157,17 @@ uv run patch-label run --phase both --test-scope all --keep-going
 每个阶段的最终文件位于：
 
 ```text
-results/<dataset-version>/<Project-ID>/<buggy|patched>/experiment.json
+results/<dataset-version>/<Project-ID>/<buggy|patched>/runs/<run-fingerprint>/experiment.json
 ```
 
-同目录还包含：
+不同指纹使用不同目录，因此新配置不会覆盖旧结果。同目录还包含：
 
 ```text
 graph.json                  原始 CFG
 graph.log                   图生成日志
 compile.log                 编译日志
 test-manifest.json          测试发现结果
+run-manifest.json           当前运行指纹，用于安全恢复
 patch-application.json      patched 阶段的补丁定位记录
 tests/*.json.gz             可恢复的逐测试结果和轨迹
 test-logs/*.log             Defects4J 逐测试完整输出
@@ -177,6 +178,8 @@ experiment.json             聚合后的 G、路径集、标签集和摘要
 
 ```json
 {
+  "schema_version": "2.0",
+  "run_fingerprint": "...",
   "graph": {
     "nodes": [],
     "edges": []
@@ -185,10 +188,11 @@ experiment.json             聚合后的 G、路径集、标签集和摘要
     {"id": "path:...", "method_id": "...", "nodes": [], "kind": "bounded-entry-exit"}
   ],
   "labels": [
-    {"path_id": "path:...", "status": "true", "test_id": "Class::method"},
-    {"path_id": "path:...", "status": "untested", "test_id": null}
+    {"path_id": "path:...", "observation": "observed", "test_outcome": "passed", "test_id": "Class::method"},
+    {"path_id": "path:...", "observation": "not_observed", "test_outcome": null, "test_id": null}
   ],
   "observed_paths": [],
+  "evidence_issues": [],
   "coverage": {},
   "tests": [],
   "summary": {}
@@ -199,10 +203,10 @@ experiment.json             聚合后的 G、路径集、标签集和摘要
 
 仓库包含一次经过验证的 `D4JV2.0/Compress-44` trigger 测试运行，可以直接在 GitHub 上查看具体的 CFG、动态轨迹、路径集和路径标签：
 
-- [buggy `experiment.json`](results/D4JV2.0/Compress-44/buggy/experiment.json)：空参数构造函数测试经过 `ENTRY -> B0 -> EXIT`，标签为 `false`；
-- [patched `experiment.json`](results/D4JV2.0/Compress-44/patched/experiment.json)：补丁增加空值检查分支并抛出预期异常，同一测试的标签变为 `true`。
+- [buggy `experiment.json`](results/D4JV2.0/Compress-44/buggy/experiment.json)：空参数构造函数测试经过 `ENTRY -> B0 -> EXIT`，测试失败；
+- [patched `experiment.json`](results/D4JV2.0/Compress-44/patched/experiment.json)：补丁增加空值检查分支并抛出预期异常，同一测试通过。
 
-该示例使用 `--test-scope trigger --max-tests 1`，目的是提供紧凑、可复现的结果；它不是完整的 `--test-scope all` 实验。
+该示例是旧版 1.0 输出，使用 `--test-scope trigger --max-tests 1`；它不是完整的 `--test-scope all` 实验。新运行输出使用 2.0 结构。
 
 ## 开发与验证
 
