@@ -257,7 +257,13 @@ def command_run(args: argparse.Namespace) -> int:
 
     def record_failure(example: object, exc: Exception) -> None:
         key = str(getattr(example, "key"))
-        failures.append({"example": key, "error": str(exc)})
+        failure = {"example": key, "error": str(exc)}
+        if isinstance(exc, CommandError):
+            output_tail = exc.result.output[-12000:]
+            if output_tail:
+                failure["output_tail"] = output_tail
+                print(output_tail, file=sys.stderr, flush=True)
+        failures.append(failure)
         print(f"FAILED {key}: {exc}", file=sys.stderr, flush=True)
 
     if args.jobs == 1:

@@ -8,7 +8,8 @@ from pathlib import Path
 import pytest
 
 from patch_label.cli import build_parser, command_run
-from patch_label.models import Example
+from patch_label.models import CommandResult, Example
+from patch_label.process import CommandError
 
 
 def test_run_parser_defaults_to_one_job() -> None:
@@ -98,3 +99,52 @@ def test_command_run_rejects_invalid_jobs(tmp_path: Path, monkeypatch) -> None:
 
     with pytest.raises(RuntimeError, match="--jobs must be at least 1"):
         command_run(args)
+
+
+def test_keep_going_prints_and_records_command_output(
+    tmp_path: Path, monkeypatch, capsys
+) -> None:
+    example = Example("sample", "Project", 1, tmp_path, tmp_path / "1.patch")
+
+    class FailingRunner:
+        def __init__(self, config: object):
+            pass
+
+        def run(self, selected: Example, phases: list[str]) -> list[Path]:
+            result = CommandResult(
+                ("defects4j", "checkout"),
+                2,
+                "",
+                'Can\'t exec "svn": No such file or directory',
+                0.1,
+            )
+            raise CommandError("Defects4J checkout failed", result)
+
+    monkeypatch.setattr("patch_label.cli.discover_examples", lambda path: [example])
+    monkeypatch.setattr("patch_label.cli.select_examples", lambda values, selectors: values)
+    monkeypatch.setattr("patch_label.cli.ExperimentRunner", FailingRunner)
+    args = Namespace(
+        repo_root=tmp_path,
+        dataset_dir=Path("dataset"),
+        defects4j_dir=Path("defects4j"),
+        state_dir=Path("state"),
+        output_dir=Path("results"),
+        example=[],
+        phase="both",
+        test_scope="all",
+        max_tests=None,
+        compile_timeout=1800,
+        test_timeout=600,
+        discovery_timeout=600,
+        max_loop_visits=2,
+        max_paths_per_method=1000,
+        jobs=1,
+        fresh=False,
+        resume=True,
+        keep_going=True,
+    )
+
+    assert command_run(args) == 1
+    assert 'Can\'t exec "svn"' in capsys.readouterr().err
+    failures = (tmp_path / "results" / "failures.json").read_text(encoding="utf-8")
+    assert 'Can\'t exec \\"svn\\"' in failures
