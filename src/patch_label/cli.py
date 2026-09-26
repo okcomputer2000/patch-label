@@ -10,9 +10,10 @@ from pathlib import Path
 from .dataset import DatasetError, discover_examples, select_examples
 from .defects4j import Defects4J
 from .experiment import ExperimentConfig, ExperimentRunner
-from .io import write_json
+from .io import read_json, write_json
 from .java_helper import build_helper
 from .process import CommandError, run_command
+from .report import write_human_reports
 
 
 def _default_root() -> Path:
@@ -49,6 +50,12 @@ def build_parser() -> argparse.ArgumentParser:
     helper = subparsers.add_parser("build-helper", help="Build the ASM/JUnit Java helper")
     _common_paths(helper)
     helper.add_argument("--force", action="store_true")
+
+    report = subparsers.add_parser(
+        "report", help="Render the report, complete CFG, and path labels"
+    )
+    _common_paths(report)
+    report.add_argument("experiment", type=Path)
 
     run = subparsers.add_parser("run", help="Run one or more experiment examples")
     _common_paths(run)
@@ -194,6 +201,19 @@ def command_build_helper(args: argparse.Namespace) -> int:
     return 0
 
 
+def command_report(args: argparse.Namespace) -> int:
+    paths = _paths(args)
+    experiment = _resolve(paths["repo_root"], args.experiment).resolve()
+    document = read_json(experiment)
+    if document.get("schema_version") != "2.0":
+        raise RuntimeError("Readable reports require a schema 2.0 experiment")
+    report, cfg, path_table = write_human_reports(document, experiment.parent)
+    print(report)
+    print(cfg)
+    print(path_table)
+    return 0
+
+
 def command_run(args: argparse.Namespace) -> int:
     paths = _paths(args)
     examples = select_examples(discover_examples(paths["dataset_dir"]), args.example)
@@ -238,6 +258,7 @@ def main(argv: list[str] | None = None) -> int:
         "catalog": command_catalog,
         "init-defects4j": command_init,
         "build-helper": command_build_helper,
+        "report": command_report,
         "run": command_run,
     }
     try:

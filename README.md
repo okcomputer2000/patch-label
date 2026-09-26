@@ -6,36 +6,111 @@ English | [中文](README_zh.md)
 
 </div>
 
-`patch-label` processes every Defects4J example in `thinkrepair-patch-diffs`, both before and after applying its `thinkrepair.patch`. For each phase, it:
+## Project Introduction
 
-1. checks out and compiles the target project;
-2. builds bytecode-level control-flow graphs (CFGs) for the classes reported as modified by Defects4J;
-3. discovers test methods and runs the selected test suite one test at a time;
-4. uses a Java agent to record the ordered CFG basic blocks visited by each test;
-5. records whether each static path was observed in a complete trace and the outcome of the covering test; and
-6. writes `G = (nodes, edges)`, `SET(paths)`, `SET(labels)`, and the raw execution traces.
+`patch-label` runs the `thinkrepair-patch-diffs` Defects4J examples in two phases: the original buggy checkout and the checkout after applying `thinkrepair.patch`. It builds bytecode-level control-flow graphs (CFGs) for every class listed by Defects4J as modified, runs selected tests one at a time, records the ordered basic blocks reached by each test, and assigns labels to complete `ENTRY -> ... -> EXIT` paths.
 
-By default, the pipeline runs every discoverable test method from `tests.all`. The experiment is intentionally large: the current dataset contains 205 examples, and every example has both a `buggy` and a `patched` phase. Per-test intermediate results are persisted so interrupted runs can resume.
+Labels always describe a complete path, never an individual CFG node:
 
-## Tooling
+| Label | Meaning |
+| --- | --- |
+| `true` | A passing test observed this complete path. |
+| `false` | A failing test observed this complete path. |
+| `unknown` | The path may be relevant, but its evidence is incomplete, or the covering test timed out or ended with an execution error. |
+| `untested` | No selected test observed the path. It is retained in machine-readable data but omitted from the concise Markdown report. |
 
-The project deliberately uses a small set of mature tools with clear upstream documentation:
+No LLM service or LLM API is used anywhere in the experiment pipeline.
 
-- [Defects4J](https://github.com/rjust/defects4j) provides reproducible checkouts, project compilation, test execution, and project metadata. The implementation uses the official `classes.modified`, `tests.all`, `tests.relevant`, `cp.test`, and source/binary directory properties.
-- [ASM](https://asm.ow2.io/) 9.8 builds JVM bytecode basic-block CFGs and inserts runtime probes at exactly the same block boundaries. ASM is downloaded only when the helper JAR is built; it is not a Python runtime dependency.
-- [JUnit 4](https://junit.org/junit4/) 4.13.2 discovers JUnit 3/4 leaf test descriptions through `Request.aClass(...).getRunner().getDescription()`. Defects4J still performs the actual execution, preserving each project's own build and test runner behavior.
-- [uv](https://docs.astral.sh/uv/) creates the virtual environment, locks dependencies, and runs every project command.
-- The Python runtime uses only the standard library. The sole development dependency is `pytest`.
+### Result directory
 
-JaCoCo is not used as the path data source. JaCoCo is well suited to line and branch coverage, but a coverage set does not preserve the execution order of basic blocks and therefore cannot directly support per-test CFG path labeling.
+Each phase writes to a fingerprinted directory so that different run configurations do not overwrite one another:
 
-## Environment Setup
+```text
+results/<dataset-version>/<Project-ID>/<buggy|patched>/runs/<run-fingerprint>/
+```
 
-The current Defects4J release requires Java 11, Git, Subversion, and Perl. Defects4J recommends `cpanm`; if `cpanm` is unavailable, this project falls back to the system `cpan -T` command and installs the same modules from `cpanfile`. The pipeline fixes `TZ=America/Los_Angeles` to satisfy Defects4J's reproducibility requirements. If the default Java installation is not Java 11, the project prefers the Java 11 installation associated with `javac`; `PATCH_LABEL_JAVA_HOME` can also be set explicitly.
+The primary outputs are deliberately separated into CFG structure and path labels, following the same general separation of program components and test observations used by spectrum-based fault-localization datasets:
 
-Clone and initialize the dependencies:
+| File | Contents |
+| --- | --- |
+| `cfg.dot` | One complete Graphviz directed graph containing every CFG node and edge. Methods are grouped into subgraphs. This is plain text and does not require Graphviz to be generated. |
+| `graph.json` | The same complete CFG in machine-readable form. No node or edge is omitted. |
+| `paths.csv` | Every complete path and every associated path-test label record, including paths not reached by the selected tests. |
+| `report.md` | A concise human-readable summary, links to the complete CFG, and all paths labeled `true`, `false`, or `unknown`. Paths with no test evidence are intentionally hidden here. |
+| `experiment.json` | The full aggregate used to reproduce reports. It also contains configuration, summaries, coverage sets, diagnostics, and test records. |
+
+Supporting files include `compile.log`, `graph.log`, `test-manifest.json`, `run-manifest.json`, `tests/*.json.gz`, `test-logs/*.log`, and, for the patched phase, `patch-application.json`. They exist for diagnostics and safe resume; the main experimental data is in the five primary outputs above.
+
+### Complete CFG values
+
+`graph.json` has two arrays:
+
+```json
+{
+  "nodes": [],
+  "edges": []
+}
+```
+
+Every node contains:
+
+| Field | Value |
+| --- | --- |
+| `id` | Globally unique node identifier. It combines the method identifier with `ENTRY`, `EXIT`, or a basic-block name such as `B3`. |
+| `method_id` | Fully qualified class name, method name, and JVM descriptor. |
+| `class_name` | Fully qualified Java class name. |
+| `method_name` | Java/JVM method name; constructors use `<init>`. |
+| `descriptor` | JVM method descriptor containing parameter and return types. |
+| `block_index` | Zero-based basic-block number; virtual nodes use `-1`. |
+| `start_instruction`, `end_instruction` | Inclusive bytecode instruction-index interval; virtual nodes use `-1`. |
+| `start_line`, `end_line` | Inclusive source-line interval when debug line metadata is available; unavailable values use `-1`. |
+| `instruction_count` | Number of bytecode instructions in the basic block; virtual nodes use `0`. |
+| `virtual` | `true` for synthetic `ENTRY`/`EXIT` nodes and `false` for executable basic blocks. |
+
+Every edge contains `source`, `target`, and `kind`. `source` and `target` are node IDs. `kind` is one of `entry`, `fallthrough`, `jump`, `switch-case`, `switch-default`, `exit`, `throw`, or an exception-handler edge kind emitted by the bytecode CFG builder. CFGs are intraprocedural: calls do not create edges into another method.
+
+`cfg.dot` contains exactly these node and edge sets. A real basic-block label includes its block name, source-line interval, and bytecode instruction interval. Synthetic `ENTRY` and `EXIT` nodes are shown as ovals.
+
+### Path and label values
+
+`paths.csv` uses one row per path-test label record:
+
+| Column | Value |
+| --- | --- |
+| `path_id` | Stable hash-based identifier for the method and complete node sequence. |
+| `method_id` | Method whose intraprocedural CFG contains the path. |
+| `whole_path` | Complete ordered node sequence, for example `ENTRY -> B0[L33-34] -> B1[L35] -> EXIT`. |
+| `label` | `true`, `false`, `unknown`, or `untested`, using the definitions above. |
+| `observation` | `observed` for a complete runtime path, `unknown` for path-specific incomplete evidence, or `not_observed` when no selected test reached the path. |
+| `test_outcome` | `passed`, `failed`, `timed_out`, or `error`; empty for a path with no covering test. |
+| `test_id` | Defects4J test selector in `Class::method` form; empty for a path with no covering test. |
+
+The same path can appear in multiple rows because multiple tests may cover it. A passing and a failing test may therefore produce separate `true` and `false` records for the same path. Loops make the theoretical path set infinite, so static paths are bounded by `--max-loop-visits` and `--max-paths-per-method`. Any complete runtime path missing from the bounded static set is still added to the output.
+
+## Dependencies
+
+The project intentionally keeps its dependency set small and unchanged:
+
+| Dependency | Purpose |
+| --- | --- |
+| Python `>=3.11` | Runs the experiment coordinator and report generator. Runtime code uses only the Python standard library. |
+| `uv` | Creates the virtual environment, installs the project, locks dependencies, and runs every Python command. |
+| Defects4J | Checks out projects, exports metadata, compiles projects, and runs tests. Clone it inside this repository; do not modify Defects4J. |
+| Java 11 JDK | Compiles Defects4J projects and the Java helper. Set `PATCH_LABEL_JAVA_HOME` if Java 11 is not selected automatically. |
+| Git, Subversion, Perl | Required by Defects4J. `cpanm` is preferred; `cpan` is supported as a fallback. |
+| ASM 9.8 | Builds bytecode CFGs and inserts probes at the same basic-block boundaries. Downloaded only while building the helper JAR. |
+| JUnit 4.13.2 | Discovers JUnit 3/4 leaf tests for the helper. Test execution remains under Defects4J. |
+| `pytest` | Development-only test dependency installed by `uv sync --dev`. |
+
+There are no Python runtime packages beyond the standard library. Generating `cfg.dot` adds no dependency.
+
+## Running
+
+From a parent directory, clone both repositories so Defects4J is placed at `patch-label/tools/defects4j`:
 
 ```bash
+git clone https://github.com/okcomputer2000/patch-label.git
+cd patch-label
 git clone https://github.com/rjust/defects4j.git tools/defects4j
 uv sync --dev
 uv run patch-label doctor
@@ -43,33 +118,13 @@ uv run patch-label init-defects4j
 uv run patch-label build-helper
 ```
 
-Do not clone Defects4J again if `tools/defects4j` already exists. `init-defects4j` first runs `cpanm --installdeps .` and then Defects4J's `init.sh`. If the Perl dependencies are already installed, use:
+If Defects4J has already been cloned and initialized, do not clone or modify it again. If its Perl modules are already installed, initialization can skip that step:
 
 ```bash
 uv run patch-label init-defects4j --skip-perl-deps
 ```
 
-All Python and experiment entry points are invoked through `uv run`; manually activating `.venv` is unnecessary.
-
-## Dataset Inspection
-
-List every example:
-
-```bash
-uv run patch-label catalog
-```
-
-Write a machine-readable catalog:
-
-```bash
-uv run patch-label catalog --output results/catalog.json
-```
-
-An example selector can be written as `Compress-44`, or as the version-qualified and unambiguous `D4JV2.0/Compress-44`.
-
-## Running Experiments
-
-Start with a small set of relevant tests for a smoke test:
+Run a five-test smoke experiment:
 
 ```bash
 uv run patch-label run \
@@ -79,7 +134,7 @@ uv run patch-label run \
   --max-tests 5
 ```
 
-Run the complete experiment for one example:
+Run all tests for one example in both phases:
 
 ```bash
 uv run patch-label run \
@@ -88,133 +143,104 @@ uv run patch-label run \
   --test-scope all
 ```
 
-Omitting `--example` processes all 205 examples sequentially:
+Run the complete experiment for every catalogued example:
 
 ```bash
 uv run patch-label run --phase both --test-scope all --keep-going
 ```
 
-Common options:
-
-- `--phase buggy|patched|both`: selects the experiment phase; the default is `both`.
-- `--test-scope all|relevant|trigger`: defaults to `all`, which strictly means every test case. `relevant` and `trigger` are intended only for development checks; `trigger` directly selects the tests that expose the original bug.
-- `--max-tests N`: limits execution to the first `N` discovered tests and is intended only for smoke tests.
-- `--test-timeout SECONDS`: sets the per-test timeout; the default is 600 seconds.
-- `--max-loop-visits N`: limits how many times an ordinary node may appear in an enumerated static path; the default is 2.
-- `--max-paths-per-method N`: limits each method to at most `N` stored static paths; the default is 1000. Any truncation is recorded in `path_enumeration_truncations`.
-- `--fresh`: deletes and rebuilds the checkouts and test caches managed by this tool.
-- `--no-resume`: checks out and runs again without reusing results. By default, per-test results are reused only when the run fingerprint matches; it covers the patch, implementation sources, helper JAR, Defects4J revision, and run options.
-- `--keep-going`: continues after an example fails and writes the collected errors to `results/failures.json`.
-
-## CFG and Path Definitions
-
-### Graph `G`
-
-The graph covers every class in `classes.modified`, including nested classes. Each non-abstract, non-native method receives its own intraprocedural CFG:
-
-- nodes are JVM bytecode basic blocks with class name, method name, descriptor, bytecode instruction range, and source line range metadata;
-- every method has virtual `ENTRY` and `EXIT` nodes;
-- edges include `entry`, `fallthrough`, `jump`, `switch-case`, `switch-default`, `exit`, `throw`, and exception-handler edges;
-- exception edges for `try` regions are a conservative approximation: every basic block in the region is connected to its handler; and
-- the graph is intraprocedural and does not contain call-graph edges.
-
-A bytecode CFG reflects actual JVM control transfer more closely than a CFG inferred only from source syntax and works consistently across the Java source versions used by different Defects4J projects. The static analyzer and Java agent share the same `CfgBuilder`, so node IDs do not need to be matched heuristically through source line numbers.
-
-### `SET(paths)`
-
-Because a CFG with loops has infinitely many possible paths, the experiment uses a finite and reproducible path-enumeration rule. It enumerates bounded paths from `ENTRY` to `EXIT`:
-
-- an ordinary node may be visited at most `--max-loop-visits` times;
-- each method stores at most `--max-paths-per-method` paths; and
-- methods that reach the limit are recorded explicitly, rather than presenting a truncated set as complete.
-
-In addition, `observed_paths` preserves the basic-block sequences actually produced by tests and is not constrained by the static path-enumeration limit.
-
-### `SET(labels)`
-
-Each static path is associated with test outcomes according to these rules:
-
-- if a path appears in a complete, untruncated method trace: `{"observation": "observed", "test_outcome": "passed|failed|timed_out|error", "test_id": ...}`;
-- if no path is observed and evidence is complete: `{"observation": "not_observed", "test_outcome": null, "test_id": null}`; and
-- if no path is observed but evidence is incomplete: `{"observation": "unknown", "test_outcome": null, "test_id": null}`.
-
-The same path can have multiple observations because multiple tests may cover it. `test_outcome` describes the whole test, not the correctness of the path. Passing requires both a zero Defects4J command exit code and an empty `failing_tests` list. If method-level test discovery fails, execution falls back to the test class and records the error in `test_discovery_errors`; these results use `"granularity": "class"` and are never silently presented as method-level results. Trace files are separated by thread. Incomplete method invocations are listed in `evidence_issues` and cannot establish a path label.
-
-The `coverage` object lists `covered_nodes`, `unobserved_nodes`, `covered_edges`, and `unobserved_edges`. "Unobserved" means absent from the captured evidence; it does not prove a path was never exercised when `evidence_issues` is nonempty.
-
-## Patch Application
-
-Dataset patches use placeholder file names such as `original/Project-ID.java` and `repaired/Project-ID.java`, so they cannot be passed directly to `git apply`. During the `patched` phase, the pipeline:
-
-1. uses `classes.modified` to locate candidate source files;
-2. uniquely matches each unified-diff hunk by its original text;
-3. attempts whitespace-normalized matching once if exact matching fails;
-4. stops the example when a hunk matches zero or multiple locations, avoiding modifications to the wrong source location; and
-5. records the file, line number, and matching mode in `patch-application.json`.
-
-## Output Layout
-
-The final result for each phase is written to:
-
-```text
-results/<dataset-version>/<Project-ID>/<buggy|patched>/runs/<run-fingerprint>/experiment.json
-```
-
-Each fingerprint gets its own directory, so a new configuration preserves earlier results. The same directory also contains:
-
-```text
-graph.json                  Raw CFG
-graph.log                   Graph-generation log
-compile.log                 Compilation log
-test-manifest.json          Test-discovery result
-run-manifest.json           Run fingerprint for safe resumption
-patch-application.json      Patch-location record for the patched phase
-tests/*.json.gz             Resumable per-test results and traces
-test-logs/*.log             Complete per-test Defects4J output
-experiment.json             Aggregated graph, path set, label set, and summary
-```
-
-The core shape of `experiment.json` is:
-
-```json
-{
-  "schema_version": "2.0",
-  "run_fingerprint": "...",
-  "graph": {
-    "nodes": [],
-    "edges": []
-  },
-  "path_set": [
-    {"id": "path:...", "method_id": "...", "nodes": [], "kind": "bounded-entry-exit"}
-  ],
-  "labels": [
-    {"path_id": "path:...", "observation": "observed", "test_outcome": "passed", "test_id": "Class::method"},
-    {"path_id": "path:...", "observation": "not_observed", "test_outcome": null, "test_id": null}
-  ],
-  "observed_paths": [],
-  "evidence_issues": [],
-  "coverage": {},
-  "tests": [],
-  "summary": {}
-}
-```
-
-### Included Example Result
-
-The repository includes a verified trigger-test run for `D4JV2.0/Compress-44`, making it possible to inspect a concrete CFG, dynamic trace, path set, and path labels directly on GitHub:
-
-- [buggy `experiment.json`](results/D4JV2.0/Compress-44/buggy/experiment.json): the null-argument constructor test follows `ENTRY -> B0 -> EXIT` and fails;
-- [patched `experiment.json`](results/D4JV2.0/Compress-44/patched/experiment.json): the applied null checks add branches, the expected exception is thrown, and the same test passes.
-
-This included result uses the legacy 1.0 schema and `--test-scope trigger --max-tests 1`. It is not a full `--test-scope all` experiment. New runs use schema 2.0.
-
-## Development and Verification
+Regenerate `report.md`, `cfg.dot`, and `paths.csv` from an existing aggregate without rerunning Defects4J tests:
 
 ```bash
-uv run pytest
-uv run patch-label catalog --output .patch-label/catalog.json
-uv run patch-label build-helper --force
-uv run patch-label doctor
+uv run patch-label report results/.../experiment.json
 ```
 
-The helper JAR, project checkouts, and caches are stored under `.patch-label/`. Final experiment data is stored under `results/`. Newly generated contents of both directories are ignored by default; publishable result snapshots may be added explicitly, as with the included `Compress-44` example.
+## Command Reference
+
+All commands have this form:
+
+```text
+uv run patch-label <command> [common path options] [command options]
+```
+
+Common path options are accepted by every command:
+
+| Option | Default | Meaning |
+| --- | --- | --- |
+| `--repo-root PATH` | Current directory | Repository root used to resolve all relative paths. |
+| `--dataset-dir PATH` | `thinkrepair-patch-diffs` | ThinkRepair patch-diff dataset directory. |
+| `--defects4j-dir PATH` | `tools/defects4j` | Unmodified Defects4J clone. |
+| `--state-dir PATH` | `.patch-label` | Generated helper JARs, checkouts, and reusable state. |
+| `--output-dir PATH` | `results` | Final result root. |
+
+### `doctor`
+
+```text
+uv run patch-label doctor [--json] [common path options]
+```
+
+Checks executables, the dataset, the Defects4J clone and initialization, and Java 11 availability. `--json` prints the checks as JSON instead of a readable list. The command exits nonzero if a required check fails.
+
+### `catalog`
+
+```text
+uv run patch-label catalog [--output FILE] [common path options]
+```
+
+Lists all discovered examples. `--output FILE` writes the complete catalog as JSON instead of printing only selectors. An example selector is either `Project-ID`, such as `Compress-44`, or the unambiguous `VERSION/Project-ID`, such as `D4JV2.0/Compress-44`.
+
+### `init-defects4j`
+
+```text
+uv run patch-label init-defects4j [--skip-perl-deps] [common path options]
+```
+
+Initializes the existing Defects4J clone. By default it installs modules from Defects4J's `cpanfile` and then runs `init.sh`. `--skip-perl-deps` runs only `init.sh` when the Perl modules are already available.
+
+### `build-helper`
+
+```text
+uv run patch-label build-helper [--force] [common path options]
+```
+
+Builds the ASM/JUnit helper and Java agent. A matching cached JAR is reused by default. `--force` rebuilds it even when its fingerprint is current.
+
+### `run`
+
+```text
+uv run patch-label run \
+  [--example SELECTOR ...] \
+  [--phase buggy|patched|both] \
+  [--test-scope all|relevant|trigger] \
+  [--max-tests N] \
+  [--compile-timeout SECONDS] \
+  [--test-timeout SECONDS] \
+  [--discovery-timeout SECONDS] \
+  [--max-loop-visits N] \
+  [--max-paths-per-method N] \
+  [--fresh] [--no-resume] [--keep-going] \
+  [common path options]
+```
+
+| Option | Default | Meaning |
+| --- | --- | --- |
+| `--example SELECTOR` | All examples | Selects one example. Repeat the option to select several. |
+| `--phase buggy|patched|both` | `both` | Runs the original version, the ThinkRepair-patched version, or both. |
+| `--test-scope all|relevant|trigger` | `all` | Uses all tests, Defects4J relevant tests, or official triggering tests. Complete experiments should use `all`; the others are for targeted checks. |
+| `--max-tests N` | No limit | Runs only the first `N` discovered tests. Intended for smoke tests, not final data. |
+| `--compile-timeout SECONDS` | `1800` | Maximum time for project compilation. |
+| `--test-timeout SECONDS` | `600` | Maximum time for each individual test. |
+| `--discovery-timeout SECONDS` | `600` | Maximum time for test-method discovery. |
+| `--max-loop-visits N` | `2` | Maximum appearances of an ordinary CFG node in one statically enumerated path. |
+| `--max-paths-per-method N` | `1000` | Maximum stored static paths per method. Limit hits are recorded in the aggregate. |
+| `--fresh` | Off | Deletes and rebuilds tool-managed output/checkouts for the selected fingerprint. It does not modify the Defects4J repository itself. |
+| `--no-resume` | Off | Disables reuse of matching per-test results and reruns the selected phase. |
+| `--keep-going` | Off | Continues with later examples after a failure and writes `results/failures.json`. |
+
+### `report`
+
+```text
+uv run patch-label report EXPERIMENT_JSON [common path options]
+```
+
+Reads a schema 2.0 `experiment.json` and regenerates the three readable/export files beside it: `report.md`, `cfg.dot`, and `paths.csv`. It does not compile a project, execute tests, apply a patch, or call any external API.

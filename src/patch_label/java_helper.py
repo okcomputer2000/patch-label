@@ -114,8 +114,44 @@ def build_helper(repo_root: Path, state_dir: Path, *, force: bool = False) -> Pa
     return helper_jar
 
 
+def build_bootstrap_support(helper_jar: Path, destination: Path) -> Path:
+    recorder_prefix = "patchlabel/trace/Recorder"
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    with zipfile.ZipFile(helper_jar) as source:
+        entries = [
+            item for item in source.infolist()
+            if item.filename == f"{recorder_prefix}.class"
+            or item.filename.startswith(f"{recorder_prefix}$")
+        ]
+        if not entries:
+            raise JavaHelperError(f"Recorder classes missing from helper JAR: {helper_jar}")
+        with zipfile.ZipFile(destination, "w", compression=zipfile.ZIP_DEFLATED) as output:
+            output.writestr("META-INF/MANIFEST.MF", "Manifest-Version: 1.0\n\n")
+            for item in entries:
+                output.writestr(item.filename, source.read(item))
+    return destination
+
+
+def install_runtime_support(helper_jar: Path, classes_dir: Path) -> list[Path]:
+    recorder_prefix = "patchlabel/trace/Recorder"
+    installed: list[Path] = []
+    with zipfile.ZipFile(helper_jar) as source:
+        entries = [
+            item for item in source.infolist()
+            if item.filename == f"{recorder_prefix}.class"
+            or item.filename.startswith(f"{recorder_prefix}$")
+        ]
+        if not entries:
+            raise JavaHelperError(f"Recorder classes missing from helper JAR: {helper_jar}")
+        for item in entries:
+            destination = classes_dir / item.filename
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            destination.write_bytes(source.read(item))
+            installed.append(destination)
+    return installed
+
+
 def _classpath(paths: list[Path]) -> str:
     import os
 
     return os.pathsep.join(str(path) for path in paths)
-

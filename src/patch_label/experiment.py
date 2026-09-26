@@ -13,11 +13,12 @@ from typing import Any, Literal
 from .defects4j import Defects4J, split_exported_list
 from .graph import enumerate_static_paths, label_graph
 from .io import read_json, read_json_gz, write_json, write_json_gz
-from .java_helper import build_helper
+from .java_helper import build_bootstrap_support, build_helper, install_runtime_support
 from .models import Example, Phase, TestCase, TestResult
 from .patching import apply_context_patch, class_source_candidates
 from .process import CommandError, run_command
 from .test_discovery import discover_test_cases
+from .report import write_human_reports
 
 
 @dataclass(slots=True)
@@ -209,26 +210,35 @@ class ExperimentRunner:
             },
         )
 
-        runtime_dir = Path(tempfile.mkdtemp(prefix=f"patch-label-{example.key}-{phase}-"))
-        try:
-            runtime_jar = runtime_dir / "patch-label-agent.jar"
-            shutil.copy2(self.helper_jar, runtime_jar)
-            includes_file = runtime_dir / "includes.txt"
-            includes_file.write_text("\n".join(metadata["classes.modified"]) + "\n", encoding="utf-8")
-            test_results = [
-                self._run_or_load_test(
-                    checkout,
-                    output_dir,
-                    runtime_dir,
-                    runtime_jar,
-                    includes_file,
-                    test,
-                    fingerprint,
+        test_results: list[dict[str, Any]] = []
+        if tests:
+            install_runtime_support(self.helper_jar, checkout / metadata["dir.bin.classes"])
+            runtime_dir = Path(tempfile.mkdtemp(prefix=f"patch-label-{example.key}-{phase}-"))
+            try:
+                runtime_jar = runtime_dir / "patch-label-agent.jar"
+                shutil.copy2(self.helper_jar, runtime_jar)
+                bootstrap_jar = build_bootstrap_support(
+                    runtime_jar, runtime_dir / "patch-label-bootstrap.jar"
                 )
-                for test in tests
-            ]
-        finally:
-            shutil.rmtree(runtime_dir, ignore_errors=True)
+                includes_file = runtime_dir / "includes.txt"
+                includes_file.write_text(
+                    "\n".join(metadata["classes.modified"]) + "\n", encoding="utf-8"
+                )
+                test_results = [
+                    self._run_or_load_test(
+                        checkout,
+                        output_dir,
+                        runtime_dir,
+                        runtime_jar,
+                        bootstrap_jar,
+                        includes_file,
+                        test,
+                        fingerprint,
+                    )
+                    for test in tests
+                ]
+            finally:
+                shutil.rmtree(runtime_dir, ignore_errors=True)
 
         static_paths, truncations = enumerate_static_paths(
             graph,
@@ -255,10 +265,21 @@ class ExperimentRunner:
             "path_enumeration_truncations": truncations,
             "tests": test_results,
             "test_discovery_errors": discovery_errors,
+            "artifacts": {
+                "human_report": "report.md",
+                "complete_cfg_dot": "cfg.dot",
+                "complete_cfg_json": "graph.json",
+                "complete_path_table": "paths.csv",
+            },
             "summary": {
                 "node_count": len(graph["nodes"]),
                 "edge_count": len(graph["edges"]),
                 "static_path_count": len(static_paths),
+                "bounded_static_path_count": len(static_paths),
+                "complete_path_count": len(labels["path_set"]),
+                "observed_path_addition_count": sum(
+                    path["kind"] == "observed-entry-exit" for path in labels["path_set"]
+                ),
                 "label_count": len(labels["labels"]),
                 "test_count": len(test_results),
                 "passing_test_count": sum(result["status"] == "true" for result in test_results),
@@ -270,9 +291,14 @@ class ExperimentRunner:
                 "evidence_issue_count": len(labels["evidence_issues"]),
                 "trace_truncated_test_count": sum(result["trace_truncated"] for result in test_results),
                 "dropped_event_count": sum(result["dropped_events"] for result in test_results),
+                "true_path_label_count": sum(label["label"] == "true" for label in labels["labels"]),
+                "false_path_label_count": sum(label["label"] == "false" for label in labels["labels"]),
+                "untested_path_label_count": sum(label["label"] == "untested" for label in labels["labels"]),
+                "unknown_path_label_count": sum(label["label"] == "unknown" for label in labels["labels"]),
             },
         }
         write_json(final_file, document)
+        write_human_reports(document, output_dir)
         return final_file
 
     def _metadata(self, checkout: Path) -> dict[str, Any]:
@@ -364,6 +390,7 @@ class ExperimentRunner:
         output_dir: Path,
         runtime_dir: Path,
         runtime_jar: Path,
+        bootstrap_jar: Path,
         includes_file: Path,
         test: TestCase,
         fingerprint: str,
@@ -384,7 +411,12 @@ class ExperimentRunner:
         trace_dir.mkdir(parents=True)
         properties = runtime_dir / f"agent-{stem}.properties"
         properties.write_text(
-            f"outputDir={trace_dir}\nincludesFile={includes_file}\nmaxEvents=5000000\n",
+            f"outputDir={trace_dir}\n"
+            f"includesFile={includes_file}\n"
+            f"bootstrapJar={bootstrap_jar}\n"
+            f"testClass={test.class_name}\n"
+            f"testMethod={test.method_name or ''}\n"
+            "maxEvents=5000000\n",
             encoding="utf-8",
         )
         option = f"-javaagent:{runtime_jar}={properties}"

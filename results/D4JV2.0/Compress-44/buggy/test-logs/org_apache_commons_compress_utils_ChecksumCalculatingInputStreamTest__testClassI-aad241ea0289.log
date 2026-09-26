@@ -1,6 +1,0 @@
-Failing tests: 1
-  - org.apache.commons.compress.utils.ChecksumCalculatingInputStreamTest::testClassInstantiationWithParameterBeingNullThrowsNullPointerExceptionOne
-
---- STDERR ---
-Running ant (compile.tests)................................................ OK
-Running ant (run.dev.tests)................................................ OK

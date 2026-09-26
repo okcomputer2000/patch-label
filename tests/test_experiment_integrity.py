@@ -107,8 +107,15 @@ def test_command_failure_without_failing_tests_is_an_error(tmp_path: Path) -> No
         "test": lambda self, *args, **kwargs: (CommandResult((), 2, "", "command failed", 0), []),
     })()
     test = SelectedTest("Sample::test", "Sample", "test", "Sample::test")
-    result = runner._run_or_load_test(tmp_path, tmp_path / "out", tmp_path / "runtime",
-                                      tmp_path / "agent.jar", tmp_path / "includes.txt", test,
-                                      "fingerprint")
+    result = runner._run_or_load_test(
+        tmp_path,
+        tmp_path / "out",
+        tmp_path / "runtime",
+        tmp_path / "agent.jar",
+        tmp_path / "bootstrap.jar",
+        tmp_path / "includes.txt",
+        test,
+        "fingerprint",
+    )
     assert result["execution_status"] == "error"
     assert result["status"] == "false"

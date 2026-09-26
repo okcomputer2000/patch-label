@@ -77,8 +77,11 @@ def enumerate_static_paths(
 
 
 def split_method_invocations(
-    events: Iterable[str], node_method: dict[str, str]
+    events: Iterable[str],
+    node_method: dict[str, str],
+    graph_edges: set[tuple[str, str]] | None = None,
 ) -> list[dict[str, Any]]:
+    known_edges = graph_edges or set()
     projected: dict[str, list[str]] = defaultdict(list)
     for node_id in events:
         method_id = node_method.get(node_id)
@@ -91,10 +94,15 @@ def split_method_invocations(
         exit_node = f"{method_id}:EXIT"
         stack: list[list[str]] = []
         incomplete: list[str] = []
-        for node_id in nodes:
+        for index, node_id in enumerate(nodes):
             if node_id == entry:
                 stack.append([node_id])
             elif stack:
+                if node_id == exit_node and index + 1 < len(nodes):
+                    next_node = nodes[index + 1]
+                    previous_node = stack[-1][-1]
+                    if next_node != entry and (previous_node, next_node) in known_edges:
+                        continue
                 stack[-1].append(node_id)
                 if node_id == exit_node:
                     invocations.append({"method_id": method_id, "nodes": stack.pop(), "complete": True})
@@ -113,6 +121,18 @@ def _is_contiguous_subpath(needle: list[str], haystack: list[str]) -> bool:
     return any(haystack[index : index + width] == needle for index in range(len(haystack) - width + 1))
 
 
+def _whole_path_label(observation: str, test_outcome: str | None) -> str:
+    if observation == "not_observed":
+        return "untested"
+    if observation != "observed":
+        return "unknown"
+    if test_outcome == "passed":
+        return "true"
+    if test_outcome == "failed":
+        return "false"
+    return "unknown"
+
+
 def label_graph(
     graph: dict[str, Any],
     static_paths: list[dict[str, Any]],
@@ -125,6 +145,7 @@ def label_graph(
     covered_nodes: set[str] = set()
     covered_edges: set[tuple[str, str]] = set()
     observed_paths: list[dict[str, Any]] = []
+    incomplete_invocations: list[dict[str, Any]] = []
     invocations_by_test: dict[str, list[dict[str, Any]]] = {}
     evidence_issues: list[dict[str, str]] = []
     if not tests:
@@ -137,8 +158,6 @@ def label_graph(
         invocations: list[dict[str, Any]] = []
         if not test.get("trace_files") and not test.get("traces"):
             evidence_issues.append({"test_id": selector, "reason": "no_trace_file"})
-        elif not test.get("traces"):
-            evidence_issues.append({"test_id": selector, "reason": "no_trace_events"})
         if test.get("trace_truncated"):
             evidence_issues.append({"test_id": selector, "reason": "trace_truncated"})
         if test.get("execution_status") == "timed_out":
@@ -147,9 +166,22 @@ def label_graph(
             evidence_issues.append({"test_id": selector, "reason": "test_execution_error"})
         for trace in test.get("traces", []):
             events = trace["nodes"] if isinstance(trace, dict) else trace
-            trace_invocations = split_method_invocations(events, node_method)
-            if any(not item["complete"] for item in trace_invocations):
-                evidence_issues.append({"test_id": selector, "reason": "incomplete_invocation"})
+            trace_invocations = split_method_invocations(events, node_method, graph_edges)
+            for item in trace_invocations:
+                if not item["complete"]:
+                    incomplete_invocations.append({
+                        **item,
+                        "test_id": selector,
+                        "test_outcome": test.get(
+                            "execution_status",
+                            "passed" if test["status"] == "true" else "failed",
+                        ),
+                    })
+                    evidence_issues.append({
+                        "test_id": selector,
+                        "method_id": item["method_id"],
+                        "reason": "incomplete_invocation",
+                    })
             covered_nodes.update(node for invocation in trace_invocations for node in invocation["nodes"])
             for invocation in trace_invocations:
                 nodes = invocation["nodes"]
@@ -169,13 +201,28 @@ def label_graph(
                         "thread_id": trace.get("thread_id") if isinstance(trace, dict) else None,
                     }
                 )
-            if not test.get("trace_truncated"):
-                invocations.extend(item for item in trace_invocations if item["complete"])
+            invocations.extend(item for item in trace_invocations if item["complete"])
         invocations_by_test[selector] = invocations
 
+    path_set = list(static_paths)
+    existing_path_ids = {path["id"] for path in path_set}
+    observed_additions = {
+        item["id"]: {
+            "id": item["id"],
+            "method_id": item["method_id"],
+            "nodes": item["nodes"],
+            "kind": "observed-entry-exit",
+        }
+        for item in observed_paths
+        if item["complete"] and item["id"] not in existing_path_ids
+    }
+    path_set.extend(
+        sorted(observed_additions.values(), key=lambda item: (item["method_id"], item["id"]))
+    )
+
     labels: list[dict[str, Any]] = []
-    for path in static_paths:
-        matches = 0
+    for path in path_set:
+        path_has_label = False
         for test in tests:
             selector = test["test"]["selector"]
             covered = any(
@@ -184,21 +231,45 @@ def label_graph(
                 for invocation in invocations_by_test[selector]
             )
             if covered:
-                matches += 1
+                path_has_label = True
+                test_outcome = test.get(
+                    "execution_status", "passed" if test["status"] == "true" else "failed"
+                )
                 labels.append(
                     {
                         "path_id": path["id"],
                         "observation": "observed",
-                        "test_outcome": test.get("execution_status", "passed" if test["status"] == "true" else "failed"),
+                        "test_outcome": test_outcome,
                         "test_id": selector,
+                        "label": _whole_path_label("observed", test_outcome),
                     }
                 )
-        if matches == 0:
+                continue
+            affected_by_incomplete_invocation = any(
+                invocation["test_id"] == selector
+                and invocation["method_id"] == path["method_id"]
+                and _is_contiguous_subpath(invocation["nodes"], path["nodes"])
+                for invocation in incomplete_invocations
+            )
+            if affected_by_incomplete_invocation:
+                path_has_label = True
+                labels.append({
+                    "path_id": path["id"],
+                    "observation": "unknown",
+                    "test_outcome": test.get(
+                        "execution_status",
+                        "passed" if test["status"] == "true" else "failed",
+                    ),
+                    "test_id": selector,
+                    "label": "unknown",
+                })
+        if not path_has_label:
             labels.append({
                 "path_id": path["id"],
-                "observation": "unknown" if evidence_issues else "not_observed",
+                "observation": "not_observed",
                 "test_outcome": None,
                 "test_id": None,
+                "label": "untested",
             })
 
     deduplicated_observed = list(
@@ -211,15 +282,18 @@ def label_graph(
         node["id"] for node in graph["nodes"] if not node.get("virtual")
     }
     return {
-        "path_set": static_paths,
+        "path_set": path_set,
         "labels": labels,
         "observed_paths": sorted(
             deduplicated_observed,
             key=lambda item: (item["test_id"], item["method_id"], item["id"]),
         ),
         "evidence_issues": sorted(
-            { (item["test_id"], item["reason"]): item for item in evidence_issues }.values(),
-            key=lambda item: (item["test_id"], item["reason"]),
+            {
+                (item["test_id"], item.get("method_id", ""), item["reason"]): item
+                for item in evidence_issues
+            }.values(),
+            key=lambda item: (item["test_id"], item.get("method_id", ""), item["reason"]),
         ),
         "coverage": {
             "covered_nodes": sorted(covered_nodes),

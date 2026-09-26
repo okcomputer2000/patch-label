@@ -10,6 +10,8 @@ import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
 
 public final class Recorder {
+    private static final String OUTPUT_PROPERTY = "patchlabel.trace.outputDir";
+    private static final String MAX_EVENTS_PROPERTY = "patchlabel.trace.maxEvents";
     private static final Object LOCK = new Object();
     private static final StringBuilder EVENTS = new StringBuilder(64 * 1024);
     private static volatile Path outputDirectory;
@@ -17,6 +19,7 @@ public final class Recorder {
     private static long sequence = 0L;
     private static long droppedEvents = 0L;
     private static boolean configured = false;
+    private static boolean recording = false;
 
     private Recorder() {}
 
@@ -25,21 +28,44 @@ public final class Recorder {
             if (configured) {
                 return;
             }
-            outputDirectory = Paths.get(directory);
-            maxEvents = configuredMaxEvents;
-            configured = true;
-            Runtime.getRuntime().addShutdownHook(new Thread(new Runnable() {
-                @Override
-                public void run() {
-                    flush();
-                }
-            }, "patch-label-trace-writer"));
+            System.setProperty(OUTPUT_PROPERTY, directory);
+            System.setProperty(MAX_EVENTS_PROPERTY, Long.toString(configuredMaxEvents));
+            configureLocal(directory, configuredMaxEvents);
+        }
+    }
+
+    private static void configureLocal(String directory, long configuredMaxEvents) {
+        outputDirectory = Paths.get(directory);
+        maxEvents = configuredMaxEvents;
+        configured = true;
+        Runtime.getRuntime().addShutdownHook(new Thread(new Runnable() {
+            @Override
+            public void run() {
+                flush();
+            }
+        }, "patch-label-trace-writer"));
+    }
+
+    private static void configureFromSystemProperties() {
+        if (configured) {
+            return;
+        }
+        String directory = System.getProperty(OUTPUT_PROPERTY);
+        String configuredMaxEvents = System.getProperty(MAX_EVENTS_PROPERTY);
+        if (directory == null || configuredMaxEvents == null) {
+            return;
+        }
+        try {
+            configureLocal(directory, Long.parseLong(configuredMaxEvents));
+        } catch (NumberFormatException exception) {
+            throw new IllegalStateException("Invalid patch-label max event count", exception);
         }
     }
 
     public static void hit(String nodeId) {
         synchronized (LOCK) {
-            if (!configured) {
+            configureFromSystemProperties();
+            if (!configured || !recording) {
                 return;
             }
             if (sequence >= maxEvents) {
@@ -53,6 +79,15 @@ public final class Recorder {
                     .append('\t')
                     .append(nodeId)
                     .append('\n');
+        }
+    }
+
+    public static void start() {
+        synchronized (LOCK) {
+            configureFromSystemProperties();
+            if (configured) {
+                recording = true;
+            }
         }
     }
 

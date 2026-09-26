@@ -2,7 +2,7 @@ import json
 import shutil
 from pathlib import Path
 
-from patch_label.java_helper import build_helper
+from patch_label.java_helper import build_bootstrap_support, build_helper, install_runtime_support
 from patch_label.experiment import _parse_trace_files
 from patch_label.process import run_command
 
@@ -12,6 +12,7 @@ def test_java_helper_builds_graph_and_records_ordered_trace(tmp_path: Path) -> N
     helper = build_helper(repo_root, repo_root / ".patch-label")
     runtime_jar = tmp_path / "patch-label-agent.jar"
     shutil.copy2(helper, runtime_jar)
+    bootstrap_jar = build_bootstrap_support(helper, tmp_path / "patch-label-bootstrap.jar")
     classes = tmp_path / "classes"
     classes.mkdir()
     run_command(
@@ -25,6 +26,9 @@ def test_java_helper_builds_graph_and_records_ordered_trace(tmp_path: Path) -> N
         ],
         cwd=repo_root,
     )
+    installed = install_runtime_support(helper, classes)
+    assert installed
+    assert all(path.is_file() for path in installed)
 
     includes = tmp_path / "includes.txt"
     includes.write_text("sample.Branchy\n", encoding="utf-8")
@@ -51,7 +55,8 @@ def test_java_helper_builds_graph_and_records_ordered_trace(tmp_path: Path) -> N
     trace_dir = tmp_path / "traces"
     properties = tmp_path / "agent.properties"
     properties.write_text(
-        f"outputDir={trace_dir}\nincludesFile={includes}\nmaxEvents=10000\n",
+        f"outputDir={trace_dir}\nincludesFile={includes}\nbootstrapJar={bootstrap_jar}\n"
+        "testClass=sample.Branchy\ntestMethod=main\nmaxEvents=10000\n",
         encoding="utf-8",
     )
     result = run_command(
@@ -75,7 +80,8 @@ def test_java_helper_builds_graph_and_records_ordered_trace(tmp_path: Path) -> N
     limited_dir = tmp_path / "limited-traces"
     limited_properties = tmp_path / "limited-agent.properties"
     limited_properties.write_text(
-        f"outputDir={limited_dir}\nincludesFile={includes}\nmaxEvents=1\n",
+        f"outputDir={limited_dir}\nincludesFile={includes}\nbootstrapJar={bootstrap_jar}\n"
+        "testClass=sample.Branchy\ntestMethod=main\nmaxEvents=1\n",
         encoding="utf-8",
     )
     run_command(

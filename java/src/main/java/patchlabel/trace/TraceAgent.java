@@ -14,6 +14,7 @@ import java.security.ProtectionDomain;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Properties;
+import java.util.jar.JarFile;
 import org.objectweb.asm.ClassReader;
 import org.objectweb.asm.ClassWriter;
 import org.objectweb.asm.Opcodes;
@@ -27,6 +28,8 @@ import patchlabel.cfg.CfgBuilder;
 import patchlabel.cfg.CfgModel;
 
 public final class TraceAgent {
+    private static JarFile bootstrapJar;
+
     private TraceAgent() {}
 
     public static void premain(String agentArgs, Instrumentation instrumentation) {
@@ -50,9 +53,29 @@ public final class TraceAgent {
         }
         String outputDirectory = require(properties, "outputDir");
         Path includesFile = Paths.get(require(properties, "includesFile"));
+        Path bootstrapJarPath = Paths.get(require(properties, "bootstrapJar"));
         long maxEvents = Long.parseLong(properties.getProperty("maxEvents", "1000000"));
-        Recorder.configure(outputDirectory, maxEvents);
-        instrumentation.addTransformer(new Transformer(readIncludes(includesFile)), false);
+        try {
+            bootstrapJar = new JarFile(bootstrapJarPath.toFile());
+        } catch (IOException exception) {
+            throw new IllegalArgumentException("Cannot open bootstrap support JAR: " + bootstrapJarPath, exception);
+        }
+        instrumentation.appendToBootstrapClassLoaderSearch(bootstrapJar);
+        configureRecorder(outputDirectory, maxEvents);
+        instrumentation.addTransformer(new Transformer(
+                readIncludes(includesFile),
+                require(properties, "testClass").replace('.', '/'),
+                properties.getProperty("testMethod", "").trim()), false);
+    }
+
+    private static void configureRecorder(String outputDirectory, long maxEvents) {
+        try {
+            Class<?> recorder = Class.forName("patchlabel.trace.Recorder", true, null);
+            recorder.getMethod("configure", String.class, long.class)
+                    .invoke(null, outputDirectory, Long.valueOf(maxEvents));
+        } catch (ReflectiveOperationException exception) {
+            throw new IllegalStateException("Cannot initialize bootstrap trace recorder", exception);
+        }
     }
 
     private static String require(Properties properties, String key) {
@@ -81,9 +104,13 @@ public final class TraceAgent {
 
     private static final class Transformer implements ClassFileTransformer {
         private final List<String> includes;
+        private final String testClass;
+        private final String testMethod;
 
-        Transformer(List<String> includes) {
+        Transformer(List<String> includes, String testClass, String testMethod) {
             this.includes = includes;
+            this.testClass = testClass;
+            this.testMethod = testMethod;
         }
 
         @Override
@@ -93,7 +120,7 @@ public final class TraceAgent {
                 Class<?> classBeingRedefined,
                 ProtectionDomain protectionDomain,
                 byte[] classfileBuffer) throws IllegalClassFormatException {
-            if (className == null || !isIncluded(className)) {
+            if (className == null || (!isIncluded(className) && !className.equals(testClass))) {
                 return null;
             }
             try {
@@ -105,7 +132,12 @@ public final class TraceAgent {
                     if ((method.access & (Opcodes.ACC_ABSTRACT | Opcodes.ACC_NATIVE)) != 0) {
                         continue;
                     }
-                    instrument(dottedClassName, method);
+                    if (isIncluded(className)) {
+                        instrument(dottedClassName, method);
+                    }
+                    if (className.equals(testClass) && isTestEntry(method)) {
+                        instrumentTestEntry(method);
+                    }
                 }
                 ClassWriter writer = new ClassWriter(reader, ClassWriter.COMPUTE_MAXS);
                 classNode.accept(writer);
@@ -116,6 +148,28 @@ public final class TraceAgent {
                 wrapped.initCause(exception);
                 throw wrapped;
             }
+        }
+
+        private boolean isTestEntry(MethodNode method) {
+            if (!testMethod.isEmpty()) {
+                return method.name.equals(testMethod);
+            }
+            return method.name.equals("<init>");
+        }
+
+        private static void instrumentTestEntry(MethodNode method) {
+            AbstractInsnNode first = method.instructions.getFirst();
+            if (first == null) {
+                return;
+            }
+            InsnList probe = new InsnList();
+            probe.add(new MethodInsnNode(
+                    Opcodes.INVOKESTATIC,
+                    "patchlabel/trace/Recorder",
+                    "start",
+                    "()V",
+                    false));
+            method.instructions.insertBefore(first, probe);
         }
 
         private boolean isIncluded(String className) {
