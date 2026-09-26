@@ -146,8 +146,10 @@ uv run patch-label run \
 Run the complete experiment for every catalogued example:
 
 ```bash
-uv run patch-label run --phase both --test-scope all --keep-going
+uv run patch-label run --phase both --test-scope all --jobs 4 --keep-going
 ```
+
+`--jobs` parallelizes independent examples, not tests inside one example. Each worker uses a separate checkout and output directory, while the buggy and patched phases of the same example remain sequential. Start with `--jobs 4`; higher values may help on machines with enough CPU, memory, and disk bandwidth, but they do not reduce final disk usage.
 
 Regenerate `report.md`, `cfg.dot`, and `paths.csv` from an existing aggregate without rerunning Defects4J tests:
 
@@ -218,6 +220,7 @@ uv run patch-label run \
   [--discovery-timeout SECONDS] \
   [--max-loop-visits N] \
   [--max-paths-per-method N] \
+  [--jobs N] \
   [--fresh] [--no-resume] [--keep-going] \
   [common path options]
 ```
@@ -233,6 +236,7 @@ uv run patch-label run \
 | `--discovery-timeout SECONDS` | `600` | Maximum time for test-method discovery. |
 | `--max-loop-visits N` | `2` | Maximum appearances of an ordinary CFG node in one statically enumerated path. |
 | `--max-paths-per-method N` | `1000` | Maximum stored static paths per method. Limit hits are recorded in the aggregate. |
+| `--jobs N` | `1` | Runs up to `N` independent examples concurrently. Tests and phases within one example remain sequential. |
 | `--fresh` | Off | Deletes and rebuilds tool-managed output/checkouts for the selected fingerprint. It does not modify the Defects4J repository itself. |
 | `--no-resume` | Off | Disables reuse of matching per-test results and reruns the selected phase. |
 | `--keep-going` | Off | Continues with later examples after a failure and writes `results/failures.json`. |
