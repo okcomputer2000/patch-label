@@ -222,8 +222,19 @@ def command_run(args: argparse.Namespace) -> int:
             if not args.keep_going:
                 raise
         else:
+            incomplete = False
             for output in outputs:
                 print(f"  {output}", flush=True)
+                summary = json.loads(output.read_text(encoding="utf-8"))["summary"]
+                errors = int(summary.get("errored_test_count", 0))
+                timeouts = int(summary.get("timed_out_test_count", 0))
+                if errors or timeouts:
+                    incomplete = True
+                    message = f"{output}: {errors} test error(s), {timeouts} timeout(s)"
+                    failures.append({"example": example.key, "error": message})
+                    print(f"INCOMPLETE {message}", file=sys.stderr, flush=True)
+            if incomplete and not args.keep_going:
+                break
     if failures:
         write_json(paths["output_dir"] / "failures.json", failures)
         return 1

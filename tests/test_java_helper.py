@@ -22,6 +22,7 @@ def test_java_helper_builds_graph_and_records_ordered_trace(tmp_path: Path) -> N
             "-d",
             str(classes),
             "tests/fixtures/java/sample/Branchy.java",
+            "tests/fixtures/java/sample/IsolatedLoader.java",
         ],
         cwd=repo_root,
     )
@@ -71,6 +72,39 @@ def test_java_helper_builds_graph_and_records_ordered_trace(tmp_path: Path) -> N
     )
     assert "sample.Branchy#classify(I)I:ENTRY" in trace_text
     assert "sample.Branchy#classify(I)I:EXIT" in trace_text
+
+    isolated_dir = tmp_path / "isolated-traces"
+    isolated_properties = tmp_path / "isolated-agent.properties"
+    isolated_properties.write_text(
+        f"outputDir={isolated_dir}\nincludesFile={includes}\nmaxEvents=10000\n",
+        encoding="utf-8",
+    )
+    isolated = run_command(
+        ["java", f"-javaagent:{runtime_jar}={isolated_properties}",
+         "-cp", str(classes), "sample.IsolatedLoader", str(classes)],
+        cwd=repo_root,
+    )
+    assert isolated.stdout.strip() == "1"
+    isolated_traces = "\n".join(
+        trace.read_text(encoding="utf-8") for trace in isolated_dir.glob("trace-*.tsv")
+    )
+    assert "sample.Branchy#classify(I)I:ENTRY" in isolated_traces
+
+    compile_dir = tmp_path / "compile-traces"
+    compile_properties = tmp_path / "compile-agent.properties"
+    compile_properties.write_text(
+        f"outputDir={compile_dir}\nincludesFile={includes}\nmaxEvents=10000\n",
+        encoding="utf-8",
+    )
+    run_command(
+        ["java", f"-javaagent:{runtime_jar}={compile_properties}",
+         "-cp", str(classes), "sample.Branchy", "2", "compile.tests"],
+        cwd=repo_root,
+    )
+    compile_traces = "\n".join(
+        trace.read_text(encoding="utf-8") for trace in compile_dir.glob("trace-*.tsv")
+    )
+    assert "sample.Branchy#classify(I)I:ENTRY" not in compile_traces
 
     limited_dir = tmp_path / "limited-traces"
     limited_properties = tmp_path / "limited-agent.properties"

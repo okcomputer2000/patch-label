@@ -14,11 +14,16 @@ import java.security.ProtectionDomain;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Properties;
+import java.util.logging.Handler;
+import java.util.logging.Level;
+import java.util.logging.LogRecord;
+import java.util.logging.Logger;
 import org.objectweb.asm.ClassReader;
 import org.objectweb.asm.ClassWriter;
 import org.objectweb.asm.Opcodes;
 import org.objectweb.asm.tree.AbstractInsnNode;
 import org.objectweb.asm.tree.ClassNode;
+import org.objectweb.asm.tree.FieldInsnNode;
 import org.objectweb.asm.tree.InsnList;
 import org.objectweb.asm.tree.LdcInsnNode;
 import org.objectweb.asm.tree.MethodInsnNode;
@@ -27,6 +32,9 @@ import patchlabel.cfg.CfgBuilder;
 import patchlabel.cfg.CfgModel;
 
 public final class TraceAgent {
+    private static final String TRACE_LOGGER_NAME = "patchlabel.trace.events";
+    private static final Logger TRACE_LOGGER = Logger.getLogger(TRACE_LOGGER_NAME);
+
     private TraceAgent() {}
 
     public static void premain(String agentArgs, Instrumentation instrumentation) {
@@ -52,7 +60,30 @@ public final class TraceAgent {
         Path includesFile = Paths.get(require(properties, "includesFile"));
         long maxEvents = Long.parseLong(properties.getProperty("maxEvents", "1000000"));
         Recorder.configure(outputDirectory, maxEvents);
-        instrumentation.addTransformer(new Transformer(readIncludes(includesFile)), false);
+        // Isolated project class loaders can call JDK logging without loading agent classes.
+        TRACE_LOGGER.setUseParentHandlers(false);
+        TRACE_LOGGER.setLevel(Level.ALL);
+        Handler handler = new Handler() {
+            @Override
+            public void publish(LogRecord record) {
+                if (record != null) {
+                    Recorder.hit(record.getMessage());
+                }
+            }
+
+            @Override
+            public void flush() {}
+
+            @Override
+            public void close() {}
+        };
+        handler.setLevel(Level.ALL);
+        TRACE_LOGGER.addHandler(handler);
+        String command = System.getProperty("sun.java.command", "");
+        // Defects4J's compile.tests can execute project code before the test begins.
+        if (!command.endsWith(" compile.tests")) {
+            instrumentation.addTransformer(new Transformer(readIncludes(includesFile)), false);
+        }
     }
 
     private static String require(Properties properties, String key) {
@@ -152,12 +183,24 @@ public final class TraceAgent {
         }
 
         private static void addHit(InsnList probe, String nodeId) {
-            probe.add(new LdcInsnNode(nodeId));
+            probe.add(new LdcInsnNode(TRACE_LOGGER_NAME));
             probe.add(new MethodInsnNode(
                     Opcodes.INVOKESTATIC,
-                    "patchlabel/trace/Recorder",
-                    "hit",
-                    "(Ljava/lang/String;)V",
+                    "java/util/logging/Logger",
+                    "getLogger",
+                    "(Ljava/lang/String;)Ljava/util/logging/Logger;",
+                    false));
+            probe.add(new FieldInsnNode(
+                    Opcodes.GETSTATIC,
+                    "java/util/logging/Level",
+                    "FINE",
+                    "Ljava/util/logging/Level;"));
+            probe.add(new LdcInsnNode(nodeId));
+            probe.add(new MethodInsnNode(
+                    Opcodes.INVOKEVIRTUAL,
+                    "java/util/logging/Logger",
+                    "log",
+                    "(Ljava/util/logging/Level;Ljava/lang/String;)V",
                     false));
         }
 
