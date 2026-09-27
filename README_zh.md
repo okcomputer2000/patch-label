@@ -206,7 +206,6 @@ uv run patch-label build-helper [--force] [通用路径参数]
 ```text
 uv run patch-label run \
   [--example SELECTOR ...] \
-  [--exclude-example SELECTOR ...] \
   [--phase buggy|patched|both] \
   [--test-scope all|relevant|trigger] \
   [--max-tests N] \
@@ -223,7 +222,6 @@ uv run patch-label run \
 | 参数 | 默认值 | 含义 |
 | --- | --- | --- |
 | `--example SELECTOR` | 全部样例 | 选择一个样例；重复该参数可选择多个样例。 |
-| `--exclude-example SELECTOR` | 不排除 | 从本次运行排除指定样例；可重复指定多个，未知编号会报错。 |
 | `--phase buggy|patched|both` | `both` | 运行原始版本、ThinkRepair 修补版本或两个版本。 |
 | `--test-scope all|relevant|trigger` | `all` | 使用全部测试、Defects4J relevant 测试或官方 trigger 测试。完整实验应使用 `all`，后两者用于定向检查。 |
 | `--max-tests N` | 不限制 | 只运行发现顺序中的前 `N` 个测试；仅用于冒烟检查，不适合作为最终数据。 |

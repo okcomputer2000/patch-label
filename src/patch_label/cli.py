@@ -70,8 +70,6 @@ def build_parser() -> argparse.ArgumentParser:
     run = subparsers.add_parser("run", help="Run one or more experiment examples")
     _common_paths(run)
     run.add_argument("--example", action="append", default=[], help="Project-ID or VERSION/Project-ID")
-    run.add_argument("--exclude-example", action="append", default=[],
-                     help="Exclude a Project-ID or VERSION/Project-ID from this run")
     run.add_argument("--phase", choices=("buggy", "patched", "both"), default="both")
     run.add_argument("--test-scope", choices=("all", "relevant", "trigger"), default="all")
     run.add_argument("--max-tests", type=int)
@@ -241,13 +239,7 @@ def command_run(args: argparse.Namespace) -> int:
     paths = _paths(args)
     if args.defects4j_dir != Path("tools/defects4j"):
         raise DatasetError("For run, use --defects4j-v1-dir and --defects4j-v2-dir")
-    catalog = discover_examples(paths["dataset_dir"])
-    examples = select_examples(catalog, args.example)
-    if args.exclude_example:
-        excluded = select_examples(catalog, args.exclude_example)
-        excluded_keys = {(item.dataset_version, item.key) for item in excluded}
-        examples = [item for item in examples
-                    if (item.dataset_version, item.key) not in excluded_keys]
+    examples = select_examples(discover_examples(paths["dataset_dir"]), args.example)
     vintage_dirs = {
         "D4JV1.2": _resolve(paths["repo_root"], args.defects4j_v1_dir),
         "D4JV2.0": _resolve(paths["repo_root"], args.defects4j_v2_dir),
