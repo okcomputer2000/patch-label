@@ -72,3 +72,32 @@ def test_run_executes_examples_concurrently_with_version_routing(tmp_path: Path,
 
     assert cli.command_run(args) == 0
     assert maximum == 2
+
+
+def test_run_excludes_selected_example(tmp_path: Path, monkeypatch) -> None:
+    examples = [
+        Example("D4JV1.2", "Chart", index, tmp_path, tmp_path / f"{index}.patch")
+        for index in (7, 8, 9)
+    ]
+    called = []
+
+    class FakeRunner:
+        def __init__(self, config):
+            pass
+
+        def run(self, example, phases):
+            called.append(example.key)
+            result = tmp_path / f"{example.key}.json"
+            result.write_text(json.dumps({"summary": {}}), encoding="utf-8")
+            return [result]
+
+    monkeypatch.setattr(cli, "discover_examples", lambda dataset_dir: examples)
+    monkeypatch.setattr(cli, "missing_versioned_bugs", lambda examples, dirs: [])
+    monkeypatch.setattr(cli, "missing_versioned_revisions", lambda examples, dirs: [])
+    monkeypatch.setattr(cli, "ExperimentRunner", FakeRunner)
+    args = cli.build_parser().parse_args([
+        "run", "--repo-root", str(tmp_path), "--exclude-example", "D4JV1.2/Chart-9",
+    ])
+
+    assert cli.command_run(args) == 0
+    assert called == ["Chart-7", "Chart-8"]

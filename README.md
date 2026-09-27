@@ -206,6 +206,7 @@ Builds the ASM/JUnit helper and Java agent. A matching cached JAR is reused by d
 ```text
 uv run patch-label run \
   [--example SELECTOR ...] \
+  [--exclude-example SELECTOR ...] \
   [--phase buggy|patched|both] \
   [--test-scope all|relevant|trigger] \
   [--max-tests N] \
@@ -222,6 +223,7 @@ uv run patch-label run \
 | Option | Default | Meaning |
 | --- | --- | --- |
 | `--example SELECTOR` | All examples | Selects one example. Repeat the option to select several. |
+| `--exclude-example SELECTOR` | None | Omits a named example from the run. Repeat to omit several; unknown selectors are rejected. |
 | `--phase buggy|patched|both` | `both` | Runs the original version, the ThinkRepair-patched version, or both. |
 | `--test-scope all|relevant|trigger` | `all` | Uses all tests, Defects4J relevant tests, or official triggering tests. Complete experiments should use `all`; the others are for targeted checks. |
 | `--max-tests N` | No limit | Runs only the first `N` discovered tests. Intended for smoke tests, not final data. |
