@@ -1,4 +1,6 @@
 import json
+import threading
+import time
 from pathlib import Path
 
 from patch_label import cli
@@ -34,3 +36,39 @@ def test_run_reports_test_execution_errors_as_failure(tmp_path: Path, monkeypatc
     failures = json.loads((tmp_path / "results" / "failures.json").read_text(encoding="utf-8"))
     assert failures[0]["example"] == "Compress-44"
     assert "1 test error" in failures[0]["error"]
+
+
+def test_run_executes_examples_concurrently_with_version_routing(tmp_path: Path, monkeypatch) -> None:
+    examples = [
+        Example("D4JV2.0", "Compress", index, tmp_path, tmp_path / f"{index}.patch")
+        for index in range(1, 5)
+    ]
+    lock = threading.Lock()
+    active = 0
+    maximum = 0
+
+    class FakeRunner:
+        def __init__(self, config):
+            assert config.expected_defects4j_tag == "v2.0.0"
+            assert config.java_major == 8
+
+        def run(self, example, phases):
+            nonlocal active, maximum
+            with lock:
+                active += 1
+                maximum = max(maximum, active)
+            time.sleep(0.03)
+            with lock:
+                active -= 1
+            result = tmp_path / f"{example.key}.json"
+            result.write_text(json.dumps({"summary": {}}), encoding="utf-8")
+            return [result]
+
+    monkeypatch.setattr(cli, "discover_examples", lambda dataset_dir: examples)
+    monkeypatch.setattr(cli, "missing_versioned_bugs", lambda examples, dirs: [])
+    monkeypatch.setattr(cli, "missing_versioned_revisions", lambda examples, dirs: [])
+    monkeypatch.setattr(cli, "ExperimentRunner", FakeRunner)
+    args = cli.build_parser().parse_args(["run", "--repo-root", str(tmp_path), "--jobs", "2"])
+
+    assert cli.command_run(args) == 0
+    assert maximum == 2

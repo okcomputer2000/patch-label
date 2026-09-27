@@ -14,16 +14,12 @@ import java.security.ProtectionDomain;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Properties;
-import java.util.logging.Handler;
-import java.util.logging.Level;
-import java.util.logging.LogRecord;
-import java.util.logging.Logger;
+import java.util.jar.JarFile;
 import org.objectweb.asm.ClassReader;
 import org.objectweb.asm.ClassWriter;
 import org.objectweb.asm.Opcodes;
 import org.objectweb.asm.tree.AbstractInsnNode;
 import org.objectweb.asm.tree.ClassNode;
-import org.objectweb.asm.tree.FieldInsnNode;
 import org.objectweb.asm.tree.InsnList;
 import org.objectweb.asm.tree.LdcInsnNode;
 import org.objectweb.asm.tree.MethodInsnNode;
@@ -32,8 +28,7 @@ import patchlabel.cfg.CfgBuilder;
 import patchlabel.cfg.CfgModel;
 
 public final class TraceAgent {
-    private static final String TRACE_LOGGER_NAME = "patchlabel.trace.events";
-    private static final Logger TRACE_LOGGER = Logger.getLogger(TRACE_LOGGER_NAME);
+    private static JarFile bootstrapJar;
 
     private TraceAgent() {}
 
@@ -58,31 +53,28 @@ public final class TraceAgent {
         }
         String outputDirectory = require(properties, "outputDir");
         Path includesFile = Paths.get(require(properties, "includesFile"));
+        Path bootstrapJarPath = Paths.get(require(properties, "bootstrapJar"));
         long maxEvents = Long.parseLong(properties.getProperty("maxEvents", "1000000"));
-        Recorder.configure(outputDirectory, maxEvents);
-        // Isolated project class loaders can call JDK logging without loading agent classes.
-        TRACE_LOGGER.setUseParentHandlers(false);
-        TRACE_LOGGER.setLevel(Level.ALL);
-        Handler handler = new Handler() {
-            @Override
-            public void publish(LogRecord record) {
-                if (record != null) {
-                    Recorder.hit(record.getMessage());
-                }
-            }
+        try {
+            bootstrapJar = new JarFile(bootstrapJarPath.toFile());
+        } catch (IOException exception) {
+            throw new IllegalArgumentException("Cannot open bootstrap support JAR: " + bootstrapJarPath, exception);
+        }
+        instrumentation.appendToBootstrapClassLoaderSearch(bootstrapJar);
+        configureRecorder(outputDirectory, maxEvents);
+        instrumentation.addTransformer(new Transformer(
+                readIncludes(includesFile),
+                require(properties, "testClass").replace('.', '/'),
+                properties.getProperty("testMethod", "").trim()), false);
+    }
 
-            @Override
-            public void flush() {}
-
-            @Override
-            public void close() {}
-        };
-        handler.setLevel(Level.ALL);
-        TRACE_LOGGER.addHandler(handler);
-        String command = System.getProperty("sun.java.command", "");
-        // Defects4J's compile.tests can execute project code before the test begins.
-        if (!command.endsWith(" compile.tests")) {
-            instrumentation.addTransformer(new Transformer(readIncludes(includesFile)), false);
+    private static void configureRecorder(String outputDirectory, long maxEvents) {
+        try {
+            Class<?> recorder = Class.forName("patchlabel.trace.Recorder", true, null);
+            recorder.getMethod("configure", String.class, long.class)
+                    .invoke(null, outputDirectory, Long.valueOf(maxEvents));
+        } catch (ReflectiveOperationException exception) {
+            throw new IllegalStateException("Cannot initialize bootstrap trace recorder", exception);
         }
     }
 
@@ -112,9 +104,13 @@ public final class TraceAgent {
 
     private static final class Transformer implements ClassFileTransformer {
         private final List<String> includes;
+        private final String testClass;
+        private final String testMethod;
 
-        Transformer(List<String> includes) {
+        Transformer(List<String> includes, String testClass, String testMethod) {
             this.includes = includes;
+            this.testClass = testClass;
+            this.testMethod = testMethod;
         }
 
         @Override
@@ -124,7 +120,7 @@ public final class TraceAgent {
                 Class<?> classBeingRedefined,
                 ProtectionDomain protectionDomain,
                 byte[] classfileBuffer) throws IllegalClassFormatException {
-            if (className == null || !isIncluded(className)) {
+            if (className == null || (!isIncluded(className) && !className.equals(testClass))) {
                 return null;
             }
             try {
@@ -137,7 +133,12 @@ public final class TraceAgent {
                     if ((method.access & (Opcodes.ACC_ABSTRACT | Opcodes.ACC_NATIVE)) != 0) {
                         continue;
                     }
-                    instrument(dottedClassName, method);
+                    if (isIncluded(className)) {
+                        instrument(dottedClassName, method);
+                    }
+                    if (className.equals(testClass) && isTestEntry(method)) {
+                        instrumentTestEntry(method);
+                    }
                 }
                 ClassWriter writer = new ClassWriter(reader, ClassWriter.COMPUTE_MAXS);
                 classNode.accept(writer);
@@ -148,6 +149,28 @@ public final class TraceAgent {
                 wrapped.initCause(exception);
                 throw wrapped;
             }
+        }
+
+        private boolean isTestEntry(MethodNode method) {
+            if (!testMethod.isEmpty()) {
+                return method.name.equals(testMethod);
+            }
+            return method.name.equals("<init>");
+        }
+
+        private static void instrumentTestEntry(MethodNode method) {
+            AbstractInsnNode first = method.instructions.getFirst();
+            if (first == null) {
+                return;
+            }
+            InsnList probe = new InsnList();
+            probe.add(new MethodInsnNode(
+                    Opcodes.INVOKESTATIC,
+                    "patchlabel/trace/Recorder",
+                    "start",
+                    "()V",
+                    false));
+            method.instructions.insertBefore(first, probe);
         }
 
         private boolean isIncluded(String className) {
@@ -184,24 +207,12 @@ public final class TraceAgent {
         }
 
         private static void addHit(InsnList probe, String nodeId) {
-            probe.add(new LdcInsnNode(TRACE_LOGGER_NAME));
-            probe.add(new MethodInsnNode(
-                    Opcodes.INVOKESTATIC,
-                    "java/util/logging/Logger",
-                    "getLogger",
-                    "(Ljava/lang/String;)Ljava/util/logging/Logger;",
-                    false));
-            probe.add(new FieldInsnNode(
-                    Opcodes.GETSTATIC,
-                    "java/util/logging/Level",
-                    "FINE",
-                    "Ljava/util/logging/Level;"));
             probe.add(new LdcInsnNode(nodeId));
             probe.add(new MethodInsnNode(
-                    Opcodes.INVOKEVIRTUAL,
-                    "java/util/logging/Logger",
-                    "log",
-                    "(Ljava/util/logging/Level;Ljava/lang/String;)V",
+                    Opcodes.INVOKESTATIC,
+                    "patchlabel/trace/Recorder",
+                    "hit",
+                    "(Ljava/lang/String;)V",
                     false));
         }
 
