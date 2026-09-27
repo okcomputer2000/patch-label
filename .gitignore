@@ -8,3 +8,5 @@ dist/
 .patch-label/
 results/
 tools/defects4j/
+tools/defects4j-v1.2/
+tools/defects4j-v2.0/
