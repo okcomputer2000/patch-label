@@ -23,6 +23,7 @@ def discover_test_cases(
     binary_tests_dir: str,
     test_classpath: str,
     timeout: float,
+    java_executable: str = "java",
 ) -> tuple[list[TestCase], list[dict[str, str]]]:
     class_list = checkout / ".patch-label-test-classes.txt"
     class_list.write_text("\n".join(test_classes) + "\n", encoding="utf-8")
@@ -35,7 +36,7 @@ def discover_test_cases(
     classpath = os.pathsep.join(entry for entry in classpath_entries if entry)
     try:
         result = run_command(
-            ["java", "-cp", classpath, "patchlabel.discovery.TestDiscovery", str(class_list)],
+            [java_executable, "-cp", classpath, "patchlabel.discovery.TestDiscovery", str(class_list)],
             cwd=checkout,
             timeout=timeout,
         )

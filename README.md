@@ -22,7 +22,7 @@ By default, the pipeline runs every discoverable test method from `tests.all`. T
 The project deliberately uses a small set of mature tools with clear upstream documentation:
 
 - [Defects4J](https://github.com/rjust/defects4j) provides reproducible checkouts, project compilation, test execution, and project metadata. The implementation uses the official `classes.modified`, `tests.all`, `tests.relevant`, `cp.test`, and source/binary directory properties.
-- [ASM](https://asm.ow2.io/) 9.8 builds JVM bytecode basic-block CFGs and inserts runtime probes at exactly the same block boundaries. ASM is downloaded only when the helper JAR is built; it is not a Python runtime dependency.
+- [ASM](https://asm.ow2.io/) 5.2 for Java 7 or 9.8 for Java 8 builds JVM bytecode basic-block CFGs and inserts runtime probes at exactly the same block boundaries. ASM is downloaded only when the helper JAR is built; it is not a Python runtime dependency.
 - [JUnit 4](https://junit.org/junit4/) 4.13.2 discovers JUnit 3/4 leaf test descriptions through `Request.aClass(...).getRunner().getDescription()`. Defects4J still performs the actual execution, preserving each project's own build and test runner behavior.
 - [uv](https://docs.astral.sh/uv/) creates the virtual environment, locks dependencies, and runs every project command.
 - The Python runtime uses only the standard library. The sole development dependency is `pytest`.
@@ -31,23 +31,16 @@ JaCoCo is not used as the path data source. JaCoCo is well suited to line and br
 
 ## Environment Setup
 
-The current Defects4J release requires Java 11, Git, Subversion, and Perl. Defects4J recommends `cpanm`; if `cpanm` is unavailable, this project falls back to the system `cpan -T` command and installs the same modules from `cpanfile`. The pipeline fixes `TZ=America/Los_Angeles` to satisfy Defects4J's reproducibility requirements. If the default Java installation is not Java 11, the project prefers the Java 11 installation associated with `javac`; `PATCH_LABEL_JAVA_HOME` can also be set explicitly.
+Formal runs use `tools/defects4j-v1.2` at tag `v1.2.0` with Java 7 for `D4JV1.2`, and `tools/defects4j-v2.0` at tag `v2.0.0` with Java 8 for `D4JV2.0`. Building this project's helper JAR also requires JDK 11 or newer. Git, Subversion, Perl, and uv are required. The runner sets `TZ=America/Los_Angeles`. A Defects4J 3.x installation in `tools/defects4j` cannot substitute for the historical releases. See [Ubuntu versioned setup](docs/ubuntu-versioned-setup.md).
 
-Clone and initialize the dependencies:
+In a prepared Ubuntu environment:
 
 ```bash
-git clone https://github.com/rjust/defects4j.git tools/defects4j
 uv sync --dev
 uv run patch-label doctor
-uv run patch-label init-defects4j
-uv run patch-label build-helper
 ```
 
-Do not clone Defects4J again if `tools/defects4j` already exists. `init-defects4j` first runs `cpanm --installdeps .` and then Defects4J's `init.sh`. If the Perl dependencies are already installed, use:
-
-```bash
-uv run patch-label init-defects4j --skip-perl-deps
-```
+`doctor` verifies both release tags, Java versions, and the bug IDs and buggy/fixed source revisions for all 205 inputs. `run` selects the historical installation from the input version and rejects a mismatched tag before running tests. Set `PATCH_LABEL_JAVA7_HOME` or `PATCH_LABEL_JAVA8_HOME` to select custom JDK locations.
 
 All Python and experiment entry points are invoked through `uv run`; manually activating `.venv` is unnecessary.
 

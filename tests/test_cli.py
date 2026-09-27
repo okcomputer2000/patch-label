@@ -16,13 +16,17 @@ def test_run_reports_test_execution_errors_as_failure(tmp_path: Path, monkeypatc
 
     class FakeRunner:
         def __init__(self, config):
-            pass
+            assert config.expected_defects4j_tag == "v2.0.0"
+            assert config.java_major == 8
+            assert config.defects4j_dir == tmp_path / "tools/defects4j-v2.0"
 
         def run(self, selected, phases):
             assert selected == example
             return [result]
 
     monkeypatch.setattr(cli, "discover_examples", lambda dataset_dir: [example])
+    monkeypatch.setattr(cli, "missing_versioned_bugs", lambda examples, dirs: [])
+    monkeypatch.setattr(cli, "missing_versioned_revisions", lambda examples, dirs: [])
     monkeypatch.setattr(cli, "ExperimentRunner", FakeRunner)
     args = cli.build_parser().parse_args(["run", "--repo-root", str(tmp_path)])
 

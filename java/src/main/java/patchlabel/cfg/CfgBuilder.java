@@ -44,22 +44,23 @@ public final class CfgBuilder {
             } else if (instruction instanceof LookupSwitchInsnNode) {
                 LookupSwitchInsnNode lookup = (LookupSwitchInsnNode) instruction;
                 addTarget(leaders, labels.get(lookup.dflt));
-                for (LabelNode label : lookup.labels) {
-                    addTarget(leaders, labels.get(label));
+                for (Object label : lookup.labels) {
+                    addTarget(leaders, labels.get((LabelNode) label));
                 }
                 addTarget(leaders, nextExecutable(instructions, index + 1));
             } else if (instruction instanceof TableSwitchInsnNode) {
                 TableSwitchInsnNode table = (TableSwitchInsnNode) instruction;
                 addTarget(leaders, labels.get(table.dflt));
-                for (LabelNode label : table.labels) {
-                    addTarget(leaders, labels.get(label));
+                for (Object label : table.labels) {
+                    addTarget(leaders, labels.get((LabelNode) label));
                 }
                 addTarget(leaders, nextExecutable(instructions, index + 1));
             } else if (isTerminal(instruction.getOpcode())) {
                 addTarget(leaders, nextExecutable(instructions, index + 1));
             }
         }
-        for (TryCatchBlockNode tryCatch : method.tryCatchBlocks) {
+        for (Object item : method.tryCatchBlocks) {
+            TryCatchBlockNode tryCatch = (TryCatchBlockNode) item;
             addTarget(leaders, labels.get(tryCatch.handler));
             addTarget(leaders, labels.get(tryCatch.start));
         }
@@ -134,14 +135,14 @@ public final class CfgBuilder {
             } else if (instruction instanceof LookupSwitchInsnNode) {
                 LookupSwitchInsnNode lookup = (LookupSwitchInsnNode) instruction;
                 addBlockEdge(graph, source, labels.get(lookup.dflt), instructionToBlock, methodId, "switch-default");
-                for (LabelNode label : lookup.labels) {
-                    addBlockEdge(graph, source, labels.get(label), instructionToBlock, methodId, "switch-case");
+                for (Object label : lookup.labels) {
+                    addBlockEdge(graph, source, labels.get((LabelNode) label), instructionToBlock, methodId, "switch-case");
                 }
             } else if (instruction instanceof TableSwitchInsnNode) {
                 TableSwitchInsnNode table = (TableSwitchInsnNode) instruction;
                 addBlockEdge(graph, source, labels.get(table.dflt), instructionToBlock, methodId, "switch-default");
-                for (LabelNode label : table.labels) {
-                    addBlockEdge(graph, source, labels.get(label), instructionToBlock, methodId, "switch-case");
+                for (Object label : table.labels) {
+                    addBlockEdge(graph, source, labels.get((LabelNode) label), instructionToBlock, methodId, "switch-case");
                 }
             } else if (isTerminal(opcode) || opcode == Opcodes.RET) {
                 addEdge(graph, source, methodId + ":EXIT", opcode == Opcodes.ATHROW ? "throw" : "exit");
@@ -199,7 +200,8 @@ public final class CfgBuilder {
             List<Integer> starts,
             int instructionLength,
             String methodId) {
-        for (TryCatchBlockNode tryCatch : method.tryCatchBlocks) {
+        for (Object item : method.tryCatchBlocks) {
+            TryCatchBlockNode tryCatch = (TryCatchBlockNode) item;
             Integer tryStart = labels.get(tryCatch.start);
             Integer tryEnd = labels.get(tryCatch.end);
             Integer handler = labels.get(tryCatch.handler);

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import shutil
+from functools import cached_property
 from pathlib import Path
 
 from .models import CommandResult, Example
@@ -13,8 +14,10 @@ class Defects4JError(RuntimeError):
 
 
 class Defects4J:
-    def __init__(self, root: Path):
+    def __init__(self, root: Path, *, java_major: int = 11, state_dir: Path | None = None):
         self.root = root.resolve()
+        self.java_major = java_major
+        self.state_dir = state_dir
         self.executable = self.root / "framework" / "bin" / "defects4j"
         if not self.executable.is_file():
             raise Defects4JError(f"Defects4J executable not found: {self.executable}")
@@ -29,20 +32,31 @@ class Defects4J:
             for child in project_repos.iterdir()
         )
 
-    @property
+    @cached_property
     def java_home(self) -> Path | None:
-        configured = os.environ.get("PATCH_LABEL_JAVA_HOME")
+        configured = os.environ.get(f"PATCH_LABEL_JAVA{self.java_major}_HOME") or os.environ.get("PATCH_LABEL_JAVA_HOME")
         candidates = [Path(configured)] if configured else []
+        if self.state_dir is not None:
+            candidates.extend(sorted((self.state_dir / "jdks").glob("*")))
+        system_jvms = Path("/usr/lib/jvm")
+        if system_jvms.is_dir():
+            candidates.extend(sorted(system_jvms.iterdir()))
         javac = shutil.which("javac")
         if javac:
             candidates.append(Path(os.path.realpath(javac)).parent.parent)
         existing = os.environ.get("JAVA_HOME")
         if existing:
             candidates.append(Path(existing))
+        expected = "1." + str(self.java_major) if self.java_major < 9 else str(self.java_major)
         for candidate in candidates:
             release = candidate / "release"
-            if release.is_file() and 'JAVA_VERSION="11' in release.read_text(encoding="utf-8", errors="replace"):
+            if release.is_file() and f'JAVA_VERSION="{expected}' in release.read_text(encoding="utf-8", errors="replace"):
                 return candidate
+            if not release.is_file() and (candidate / "bin" / "java").is_file():
+                result = run_command([str(candidate / "bin" / "java"), "-version"],
+                                     cwd=self.root, timeout=10, check=False)
+                if f'version "{expected}' in result.output:
+                    return candidate
         return None
 
     def _base_env(self) -> dict[str, str]:

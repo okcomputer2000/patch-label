@@ -5,14 +5,21 @@ import json
 import re
 import shutil
 import sys
+from dataclasses import replace
 from pathlib import Path
 
-from .dataset import DatasetError, discover_examples, select_examples
+from .dataset import (DatasetError, discover_examples, missing_versioned_bugs,
+                      missing_versioned_revisions, select_examples)
 from .defects4j import Defects4J
 from .experiment import ExperimentConfig, ExperimentRunner
 from .io import write_json
 from .java_helper import build_helper
 from .process import CommandError, run_command
+
+VERSION_RUNTIMES = {
+    "D4JV1.2": ("v1.2.0", 7),
+    "D4JV2.0": ("v2.0.0", 8),
+}
 
 
 def _default_root() -> Path:
@@ -23,6 +30,8 @@ def _common_paths(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--repo-root", type=Path, default=_default_root())
     parser.add_argument("--dataset-dir", type=Path, default=Path("thinkrepair-patch-diffs"))
     parser.add_argument("--defects4j-dir", type=Path, default=Path("tools/defects4j"))
+    parser.add_argument("--defects4j-v1-dir", type=Path, default=Path("tools/defects4j-v1.2"))
+    parser.add_argument("--defects4j-v2-dir", type=Path, default=Path("tools/defects4j-v2.0"))
     parser.add_argument("--state-dir", type=Path, default=Path(".patch-label"))
     parser.add_argument("--output-dir", type=Path, default=Path("results"))
 
@@ -97,37 +106,42 @@ def command_doctor(args: argparse.Namespace) -> int:
             "detail": perl_installer or "neither cpanm nor cpan found",
         }
     )
-    checks.extend(
-        [
-            {
-                "name": "dataset",
-                "ok": paths["dataset_dir"].is_dir(),
-                "detail": str(paths["dataset_dir"]),
-            },
-            {
-                "name": "defects4j clone",
-                "ok": (paths["defects4j_dir"] / ".git").is_dir(),
-                "detail": str(paths["defects4j_dir"]),
-            },
-        ]
-    )
+    checks.append({"name": "dataset", "ok": paths["dataset_dir"].is_dir(),
+                   "detail": str(paths["dataset_dir"])})
+    compiler_output = (run_command(["javac", "-version"], cwd=paths["repo_root"],
+                                   check=False).output.strip() if shutil.which("javac") else "not found")
+    version_match = re.search(r"javac (\d+)", compiler_output)
+    compiler_ok = bool(version_match and int(version_match.group(1)) >= 11)
+    checks.append({"name": "helper compiler (JDK 11+)", "ok": compiler_ok,
+                   "detail": compiler_output})
+    for version, argument in (("D4JV1.2", args.defects4j_v1_dir),
+                              ("D4JV2.0", args.defects4j_v2_dir)):
+        expected_tag, java_major = VERSION_RUNTIMES[version]
+        directory = _resolve(paths["repo_root"], argument).resolve()
+        try:
+            vintage = Defects4J(directory, java_major=java_major,
+                                 state_dir=paths["state_dir"])
+            tag = run_command(["git", "-C", str(directory), "describe", "--tags", "--exact-match"],
+                              cwd=paths["repo_root"], check=False).stdout.strip()
+            ready = tag == expected_tag and vintage.initialized and vintage.java_home is not None
+            detail = f"{directory}: tag={tag or 'untagged'}, Java {java_major}={vintage.java_home}, initialized={vintage.initialized}"
+        except Exception as exc:
+            ready, detail = False, str(exc)
+        checks.append({"name": f"{version} runtime", "ok": ready, "detail": detail})
     try:
-        d4j = Defects4J(paths["defects4j_dir"])
-        initialized = d4j.initialized
-    except Exception as exc:  # reported as a diagnostic, not hidden
-        initialized = False
-        detail = str(exc)
-    else:
-        detail = "project repositories available" if initialized else "run init-defects4j"
-    checks.append({"name": "defects4j initialized", "ok": initialized, "detail": detail})
-    if 'd4j' in locals():
-        checks.append(
-            {
-                "name": "defects4j Java 11",
-                "ok": d4j.java_home is not None,
-                "detail": str(d4j.java_home) if d4j.java_home else "set PATCH_LABEL_JAVA_HOME",
-            }
-        )
+        examples = discover_examples(paths["dataset_dir"])
+        vintage_dirs = {
+            "D4JV1.2": _resolve(paths["repo_root"], args.defects4j_v1_dir),
+            "D4JV2.0": _resolve(paths["repo_root"], args.defects4j_v2_dir),
+        }
+        missing = missing_versioned_bugs(examples, vintage_dirs)
+        checks.append({"name": "versioned bug catalog", "ok": not missing,
+                       "detail": f"{len(examples) - len(missing)}/{len(examples)} active; missing: {', '.join(missing[:10])}"})
+        missing_revisions = missing_versioned_revisions(examples, vintage_dirs)
+        checks.append({"name": "versioned source revisions", "ok": not missing_revisions,
+                       "detail": f"{len(examples) - len({item.split(':', 1)[0] for item in missing_revisions})}/{len(examples)} complete; missing: {', '.join(missing_revisions[:10])}"})
+    except DatasetError as exc:
+        checks.append({"name": "versioned bug catalog", "ok": False, "detail": str(exc)})
     payload = {"ok": all(bool(check["ok"]) for check in checks), "checks": checks}
     if args.as_json:
         print(json.dumps(payload, ensure_ascii=False, indent=2))
@@ -196,7 +210,19 @@ def command_build_helper(args: argparse.Namespace) -> int:
 
 def command_run(args: argparse.Namespace) -> int:
     paths = _paths(args)
+    if args.defects4j_dir != Path("tools/defects4j"):
+        raise DatasetError("For run, use --defects4j-v1-dir and --defects4j-v2-dir")
     examples = select_examples(discover_examples(paths["dataset_dir"]), args.example)
+    vintage_dirs = {
+        "D4JV1.2": _resolve(paths["repo_root"], args.defects4j_v1_dir),
+        "D4JV2.0": _resolve(paths["repo_root"], args.defects4j_v2_dir),
+    }
+    missing = missing_versioned_bugs(examples, vintage_dirs)
+    if missing:
+        raise DatasetError("Bug IDs missing from matching Defects4J release: " + ", ".join(missing))
+    missing_revisions = missing_versioned_revisions(examples, vintage_dirs)
+    if missing_revisions:
+        raise DatasetError("Source revisions missing from matching Defects4J release: " + ", ".join(missing_revisions))
     phases = ["buggy", "patched"] if args.phase == "both" else [args.phase]
     config = ExperimentConfig(
         **paths,
@@ -210,11 +236,23 @@ def command_run(args: argparse.Namespace) -> int:
         fresh=args.fresh,
         resume=args.resume,
     )
-    runner = ExperimentRunner(config)
+    runners: dict[str, ExperimentRunner] = {}
     failures: list[dict[str, str]] = []
     for index, example in enumerate(examples, start=1):
         print(f"[{index}/{len(examples)}] {example.dataset_version}/{example.key}", flush=True)
         try:
+            if example.dataset_version not in VERSION_RUNTIMES:
+                raise RuntimeError(f"Unsupported dataset version: {example.dataset_version}")
+            if example.dataset_version not in runners:
+                tag, java_major = VERSION_RUNTIMES[example.dataset_version]
+                directory = args.defects4j_v1_dir if java_major == 7 else args.defects4j_v2_dir
+                version_config = replace(config,
+                    defects4j_dir=_resolve(paths["repo_root"], directory).resolve(),
+                    expected_defects4j_tag=tag,
+                    java_major=java_major,
+                )
+                runners[example.dataset_version] = ExperimentRunner(version_config)
+            runner = runners[example.dataset_version]
             outputs = runner.run(example, phases)  # type: ignore[arg-type]
         except Exception as exc:
             failures.append({"example": example.key, "error": str(exc)})

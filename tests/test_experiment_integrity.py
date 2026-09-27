@@ -42,6 +42,16 @@ def test_invalid_limits_fail_before_running_tools(tmp_path: Path) -> None:
         ExperimentRunner(config)
 
 
+def test_rejects_wrong_defects4j_release_before_building_helper(tmp_path: Path, monkeypatch) -> None:
+    config = ExperimentConfig(tmp_path, tmp_path, tmp_path, tmp_path, tmp_path,
+                              expected_defects4j_tag="v1.2.0", java_major=7)
+    monkeypatch.setattr("patch_label.experiment.Defects4J", lambda *args, **kwargs: object())
+    monkeypatch.setattr("patch_label.experiment.run_command", lambda *args, **kwargs:
+                        CommandResult((), 0, "v3.0.1\n", "", 0))
+    with pytest.raises(ExperimentError, match="must be v1.2.0"):
+        ExperimentRunner(config)
+
+
 def test_run_fingerprint_changes_with_config_patch_and_source(tmp_path: Path, monkeypatch) -> None:
     root = tmp_path / "repo"
     (root / "src").mkdir(parents=True)
@@ -56,7 +66,7 @@ def test_run_fingerprint_changes_with_config_patch_and_source(tmp_path: Path, mo
     runner = object.__new__(ExperimentRunner)
     runner.config = config
     runner.helper_jar = helper
-    runner.d4j = type("FakeD4J", (), {"java_home": None})()
+    runner.d4j = type("FakeD4J", (), {"java_home": Path("/fake/java")})()
     monkeypatch.setattr("patch_label.experiment.run_command", lambda *args, **kwargs:
                         CommandResult((), 0, "revision-a\n", "", 0))
     example = Example("D4JV2.0", "Compress", 44, root, patch)

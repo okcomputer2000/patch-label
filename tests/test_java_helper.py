@@ -1,5 +1,6 @@
 import json
 import shutil
+import zipfile
 from pathlib import Path
 
 from patch_label.java_helper import build_helper
@@ -120,3 +121,28 @@ def test_java_helper_builds_graph_and_records_ordered_trace(tmp_path: Path) -> N
     names, traces, dropped = _parse_trace_files(limited_dir)
     assert names and traces
     assert dropped > 0
+
+
+def test_java7_helper_records_a_java7_class(tmp_path: Path) -> None:
+    repo_root = Path.cwd()
+    helper = build_helper(repo_root, repo_root / ".patch-label", release=7)
+    with zipfile.ZipFile(helper) as archive:
+        class_bytes = archive.read("patchlabel/trace/TraceAgent.class")
+    assert int.from_bytes(class_bytes[6:8], "big") == 51
+    classes = tmp_path / "classes"
+    classes.mkdir()
+    run_command(["javac", "--release", "7", "-d", str(classes),
+                 "tests/fixtures/java/sample/Branchy.java"], cwd=repo_root)
+    includes = tmp_path / "includes.txt"
+    includes.write_text("sample.Branchy\n", encoding="utf-8")
+    traces = tmp_path / "traces"
+    properties = tmp_path / "agent.properties"
+    properties.write_text(
+        f"outputDir={traces}\nincludesFile={includes}\nmaxEvents=10000\n",
+        encoding="utf-8",
+    )
+    result = run_command(["java", f"-javaagent:{helper}={properties}",
+                          "-cp", str(classes), "sample.Branchy", "2"], cwd=repo_root)
+    assert result.stdout.strip() == "1"
+    assert any("sample.Branchy#classify(I)I:ENTRY" in path.read_text(encoding="utf-8")
+               for path in traces.glob("trace-*.tsv"))

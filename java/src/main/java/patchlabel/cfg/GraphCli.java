@@ -47,7 +47,8 @@ public final class GraphCli {
             ClassNode classNode = new ClassNode();
             new ClassReader(Files.readAllBytes(classFile)).accept(classNode, ClassReader.SKIP_FRAMES);
             String className = classNode.name.replace('/', '.');
-            for (MethodNode method : classNode.methods) {
+            for (Object item : classNode.methods) {
+                MethodNode method = (MethodNode) item;
                 if ((method.access & (Opcodes.ACC_ABSTRACT | Opcodes.ACC_NATIVE)) == 0) {
                     methods.add(CfgBuilder.build(className, method));
                 }

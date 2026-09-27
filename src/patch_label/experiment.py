@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
 
-from .defects4j import Defects4J, split_exported_list
+from .defects4j import Defects4J, split_classpath, split_exported_list
 from .graph import enumerate_static_paths, label_graph
 from .io import read_json, read_json_gz, write_json, write_json_gz
 from .java_helper import build_helper
@@ -36,6 +36,8 @@ class ExperimentConfig:
     max_paths_per_method: int = 1000
     fresh: bool = False
     resume: bool = True
+    expected_defects4j_tag: str | None = None
+    java_major: int = 11
 
 
 class ExperimentError(RuntimeError):
@@ -103,12 +105,25 @@ class ExperimentRunner:
             if getattr(config, name) <= 0:
                 raise ExperimentError(f"{name} must be positive")
         self.config = config
-        self.d4j = Defects4J(config.defects4j_dir)
+        self.d4j = Defects4J(config.defects4j_dir, java_major=config.java_major,
+                             state_dir=config.state_dir)
+        if config.expected_defects4j_tag is not None:
+            actual_tag = run_command(
+                ["git", "-C", str(config.defects4j_dir), "describe", "--tags", "--exact-match"],
+                cwd=config.repo_root, check=False,
+            ).stdout.strip()
+            if actual_tag != config.expected_defects4j_tag:
+                raise ExperimentError(
+                    f"{config.defects4j_dir} must be {config.expected_defects4j_tag}; found {actual_tag or 'untagged revision'}"
+                )
         if not self.d4j.initialized:
             raise ExperimentError(
-                "Defects4J is cloned but not initialized. Run `uv run patch-label init-defects4j` first."
+                f"Defects4J is not initialized: {config.defects4j_dir}"
             )
-        self.helper_jar = build_helper(config.repo_root, config.state_dir)
+        if self.d4j.java_home is None:
+            raise ExperimentError(f"Java {config.java_major} JDK not found for {config.defects4j_dir}")
+        self.helper_jar = build_helper(config.repo_root, config.state_dir,
+                                       release=7 if config.java_major == 7 else 8)
 
     def _run_fingerprint(self, example: Example, phase: Phase) -> str:
         digest = hashlib.sha256()
@@ -123,12 +138,14 @@ class ExperimentRunner:
             ["git", "-C", str(self.config.defects4j_dir), "rev-parse", "HEAD"],
             cwd=self.config.repo_root,
         ).stdout.strip()
-        java_version = run_command(["java", "-version"], cwd=self.config.repo_root).output.strip()
+        java_version = run_command([str(self.d4j.java_home / "bin" / "java"), "-version"],
+                                   cwd=self.config.repo_root).output.strip()
         identity = {
             "schema_version": "2.0",
             "example": f"{example.dataset_version}/{example.key}",
             "phase": phase,
             "defects4j_revision": revision,
+            "defects4j_tag": self.config.expected_defects4j_tag,
             "java_home": str(self.d4j.java_home),
             "java_version": java_version,
             "test_scope": self.config.test_scope,
@@ -242,6 +259,7 @@ class ExperimentRunner:
             "generated_at_epoch_seconds": time.time(),
             "example": example.to_dict(),
             "phase": phase,
+            "defects4j_tag": self.config.expected_defects4j_tag,
             "configuration": {
                 "test_scope": self.config.test_scope,
                 "max_tests": self.config.max_tests,
@@ -286,9 +304,22 @@ class ExperimentRunner:
             "tests.relevant",
             "tests.trigger",
         ]
+        if self.config.expected_defects4j_tag == "v1.2.0":
+            names.remove("dir.bin.tests")  # Not exported by Defects4J 1.2.
         values = {name: self.d4j.export(checkout, name) for name in names}
         for name in ("classes.modified", "tests.all", "tests.relevant", "tests.trigger"):
             values[name] = split_exported_list(values[name])
+        if "dir.bin.tests" not in values:
+            test_classes = values["tests.all"]
+            matches = [entry for entry in split_classpath(values["cp.test"])
+                       if Path(entry).is_dir() and any(
+                           (Path(entry) / (class_name.replace(".", "/") + ".class")).is_file()
+                           for class_name in test_classes)]
+            if len(matches) != 1:
+                raise ExperimentError(
+                    f"Cannot uniquely identify compiled test directory from cp.test: {matches}"
+                )
+            values["dir.bin.tests"] = matches[0]
         return values
 
     def _build_graph(
@@ -303,7 +334,7 @@ class ExperimentRunner:
         try:
             result = run_command(
                 [
-                    "java",
+                    str(self.d4j.java_home / "bin" / "java"),
                     "-cp",
                     str(self.helper_jar),
                     "patchlabel.cfg.GraphCli",
@@ -356,6 +387,7 @@ class ExperimentRunner:
             binary_tests_dir=metadata["dir.bin.tests"],
             test_classpath=metadata["cp.test"],
             timeout=self.config.discovery_timeout,
+            java_executable=str(self.d4j.java_home / "bin" / "java"),
         )
 
     def _run_or_load_test(

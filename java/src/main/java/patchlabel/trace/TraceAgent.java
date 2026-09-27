@@ -132,7 +132,8 @@ public final class TraceAgent {
                 ClassNode classNode = new ClassNode();
                 reader.accept(classNode, 0);
                 String dottedClassName = classNode.name.replace('/', '.');
-                for (MethodNode method : classNode.methods) {
+                for (Object item : classNode.methods) {
+                    MethodNode method = (MethodNode) item;
                     if ((method.access & (Opcodes.ACC_ABSTRACT | Opcodes.ACC_NATIVE)) != 0) {
                         continue;
                     }

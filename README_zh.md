@@ -22,7 +22,7 @@
 本项目优先使用少量、维护成熟且有明确官方文档的工具：
 
 - [Defects4J](https://github.com/rjust/defects4j)：负责可复现 checkout、项目编译、单测执行和项目元数据导出。代码使用官方的 `classes.modified`、`tests.all`、`tests.relevant`、`cp.test` 和源码/二进制目录属性。
-- [ASM](https://asm.ow2.io/) 9.8：构建 JVM 字节码基本块 CFG，并在完全相同的块边界插入运行时探针。ASM 只在构建辅助 JAR 时下载，不是 Python 运行时依赖。
+- [ASM](https://asm.ow2.io/) 5.2（Java 7）或 9.8（Java 8）：构建 JVM 字节码基本块 CFG，并在完全相同的块边界插入运行时探针。ASM 只在构建辅助 JAR 时下载，不是 Python 运行时依赖。
 - [JUnit 4](https://junit.org/junit4/) 4.13.2：通过 `Request.aClass(...).getRunner().getDescription()` 获取 JUnit 3/4 runner 的叶子测试描述；实际执行仍交给 Defects4J，保留项目自己的构建和 runner 行为。
 - [uv](https://docs.astral.sh/uv/)：创建虚拟环境、锁定依赖并执行全部项目命令。
 - Python 运行时代码只使用标准库；开发依赖只有 `pytest`。
@@ -31,23 +31,16 @@
 
 ## 环境准备
 
-Defects4J 当前版本要求 Java 11、Git、Subversion 和 Perl。官方推荐 `cpanm`；本项目找不到 `cpanm` 时会回退到系统 `cpan -T`，读取 `cpanfile` 安装相同模块。运行时会固定 `TZ=America/Los_Angeles`，与 Defects4J 官方可复现性要求一致。若系统默认 Java 不是 11，本项目会优先采用 `javac` 对应的 Java 11；也可显式设置 `PATCH_LABEL_JAVA_HOME`。
+正式实验按输入版本分别使用 `tools/defects4j-v1.2`（固定标签 `v1.2.0`、Java 7）和 `tools/defects4j-v2.0`（固定标签 `v2.0.0`、Java 8）。构建本项目辅助 JAR 还需要 JDK 11 或更新版本。需要 Git、Subversion、Perl 和 uv；实验命令固定 `TZ=America/Los_Angeles`。`tools/defects4j` 的 3.x 安装不能代替上述历史版本。历史版的 Ubuntu 准备步骤见 [实验环境说明](docs/ubuntu-versioned-setup.md)。
 
-克隆并初始化：
+在已准备好的 Ubuntu 环境执行：
 
 ```bash
-git clone https://github.com/rjust/defects4j.git tools/defects4j
 uv sync --dev
 uv run patch-label doctor
-uv run patch-label init-defects4j
-uv run patch-label build-helper
 ```
 
-仓库中已经存在 `tools/defects4j` 时不要重复 clone。`init-defects4j` 会先执行 `cpanm --installdeps .`，然后执行 Defects4J 的 `init.sh`。若 Perl 依赖已经安装，可使用：
-
-```bash
-uv run patch-label init-defects4j --skip-perl-deps
-```
+`doctor` 会核对两个 Defects4J 标签、Java 版本，以及 205 个输入对应的缺陷编号和修复前后源码修订号。`run` 自动按 `D4JV1.2`、`D4JV2.0` 选择相应安装；标签不符会在执行前报错。可用 `PATCH_LABEL_JAVA7_HOME`、`PATCH_LABEL_JAVA8_HOME` 指定 JDK 路径。
 
 所有 Python/实验入口均通过 `uv run` 调用；不需要手动激活 `.venv`。
 
