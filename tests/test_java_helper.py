@@ -82,7 +82,8 @@ def test_java_helper_builds_graph_and_records_ordered_trace(tmp_path: Path) -> N
     isolated_dir = tmp_path / "isolated-traces"
     isolated_properties = tmp_path / "isolated-agent.properties"
     isolated_properties.write_text(
-        f"outputDir={isolated_dir}\nincludesFile={includes}\nmaxEvents=10000\n",
+        f"outputDir={isolated_dir}\nincludesFile={includes}\nbootstrapJar={bootstrap_jar}\n"
+        "testClass=sample.IsolatedLoader\ntestMethod=main\nmaxEvents=10000\n",
         encoding="utf-8",
     )
     isolated = run_command(
@@ -99,7 +100,8 @@ def test_java_helper_builds_graph_and_records_ordered_trace(tmp_path: Path) -> N
     compile_dir = tmp_path / "compile-traces"
     compile_properties = tmp_path / "compile-agent.properties"
     compile_properties.write_text(
-        f"outputDir={compile_dir}\nincludesFile={includes}\nmaxEvents=10000\n",
+        f"outputDir={compile_dir}\nincludesFile={includes}\nbootstrapJar={bootstrap_jar}\n"
+        "testClass=sample.Branchy\ntestMethod=nonexistent\nmaxEvents=10000\n",
         encoding="utf-8",
     )
     run_command(
@@ -132,6 +134,7 @@ def test_java_helper_builds_graph_and_records_ordered_trace(tmp_path: Path) -> N
 def test_java7_helper_records_a_java7_class(tmp_path: Path) -> None:
     repo_root = Path.cwd()
     helper = build_helper(repo_root, repo_root / ".patch-label", release=7)
+    bootstrap_jar = build_bootstrap_support(helper, tmp_path / "patch-label-bootstrap-java7.jar")
     with zipfile.ZipFile(helper) as archive:
         class_bytes = archive.read("patchlabel/trace/TraceAgent.class")
     assert int.from_bytes(class_bytes[6:8], "big") == 51
@@ -144,7 +147,8 @@ def test_java7_helper_records_a_java7_class(tmp_path: Path) -> None:
     traces = tmp_path / "traces"
     properties = tmp_path / "agent.properties"
     properties.write_text(
-        f"outputDir={traces}\nincludesFile={includes}\nmaxEvents=10000\n",
+        f"outputDir={traces}\nincludesFile={includes}\nbootstrapJar={bootstrap_jar}\n"
+        "testClass=sample.Branchy\ntestMethod=main\nmaxEvents=10000\n",
         encoding="utf-8",
     )
     result = run_command(["java", f"-javaagent:{helper}={properties}",
