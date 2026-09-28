@@ -70,6 +70,32 @@ def test_splits_recursive_invocations_with_entry_exit_stack() -> None:
     assert all(invocation["complete"] for invocation in invocations)
 
 
+def test_splits_recursive_invocations_with_consecutive_exits() -> None:
+    node_method = {
+        f"{METHOD}:{suffix}": METHOD for suffix in ("ENTRY", "B0", "EXIT")
+    }
+    events = [
+        f"{METHOD}:ENTRY",
+        f"{METHOD}:B0",
+        f"{METHOD}:ENTRY",
+        f"{METHOD}:B0",
+        f"{METHOD}:EXIT",
+        f"{METHOD}:EXIT",
+    ]
+
+    invocations = split_method_invocations(
+        events,
+        node_method,
+        {
+            (f"{METHOD}:ENTRY", f"{METHOD}:B0"),
+            (f"{METHOD}:B0", f"{METHOD}:EXIT"),
+        },
+    )
+
+    assert len(invocations) == 2
+    assert all(invocation["complete"] for invocation in invocations)
+
+
 def test_ignores_exit_probe_when_exception_is_caught_in_same_method() -> None:
     node_method = {
         f"{METHOD}:{suffix}": METHOD for suffix in ("ENTRY", "B0", "B1", "B2", "EXIT")
@@ -102,7 +128,7 @@ def test_ignores_exit_probe_when_exception_is_caught_in_same_method() -> None:
     }]
 
 
-def test_incomplete_invocation_cannot_label_a_static_path() -> None:
+def test_incomplete_invocation_uses_test_outcome_for_a_static_path() -> None:
     graph = graph_fixture()
     paths, _ = enumerate_static_paths(graph, max_loop_visits=2, max_paths_per_method=100)
     labels = label_graph(graph, paths, [{
@@ -121,8 +147,29 @@ def test_incomplete_invocation_cannot_label_a_static_path() -> None:
         item for item in labels["labels"]
         if f"{METHOD}:B2" in path_methods[item["path_id"]]
     ]
-    assert {item["label"] for item in affected} == {"unknown"}
+    assert {item["label"] for item in affected} == {"false"}
+    assert {item["observation"] for item in affected} == {"incomplete"}
     assert {item["label"] for item in unaffected} == {"untested"}
+
+
+def test_passing_incomplete_invocation_is_true_for_expected_exception() -> None:
+    graph = graph_fixture()
+    paths, _ = enumerate_static_paths(graph, max_loop_visits=2, max_paths_per_method=100)
+    labels = label_graph(graph, paths, [{
+        "test": {"selector": "test"},
+        "status": "true",
+        "execution_status": "passed",
+        "traces": [{"file": "trace.tsv", "thread_id": "1", "nodes": [
+            f"{METHOD}:ENTRY", f"{METHOD}:B0", f"{METHOD}:B1",
+        ]}],
+    }])
+    path_methods = {path["id"]: path["nodes"] for path in labels["path_set"]}
+    affected = [
+        item for item in labels["labels"]
+        if f"{METHOD}:B1" in path_methods[item["path_id"]]
+    ]
+    assert {item["label"] for item in affected} == {"true"}
+    assert {item["observation"] for item in affected} == {"incomplete"}
     assert all(item["observation"] != "observed" for item in labels["labels"])
     assert labels["evidence_issues"] == [{
         "test_id": "test",
@@ -131,7 +178,7 @@ def test_incomplete_invocation_cannot_label_a_static_path() -> None:
     }]
 
 
-def test_incomplete_invocation_only_makes_its_method_unknown() -> None:
+def test_incomplete_invocation_only_labels_its_method() -> None:
     graph = graph_fixture()
     other_method = "sample.Branchy#other()V"
     graph["nodes"].extend([
@@ -161,7 +208,7 @@ def test_incomplete_invocation_only_makes_its_method_unknown() -> None:
         for method_id in (METHOD, other_method)
     }
 
-    assert labels_by_method[METHOD] == {"unknown"}
+    assert labels_by_method[METHOD] == {"true"}
     assert labels_by_method[other_method] == {"untested"}
 
 

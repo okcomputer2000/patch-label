@@ -14,12 +14,37 @@ Labels always describe a complete path, never an individual CFG node:
 
 | Label | Meaning |
 | --- | --- |
-| `true` | A passing test observed this complete path. |
-| `false` | A failing test observed this complete path. |
-| `unknown` | The path may be relevant, but its evidence is incomplete, or the covering test timed out or ended with an execution error. |
+| `true` | The covering test passed. This includes an expected exception represented by an incomplete invocation. |
+| `false` | The covering test failed. This includes an unexpected exception represented by an incomplete invocation. |
+| `unknown` | The test timed out, ended with an execution error, or has no definitive pass/fail outcome. |
 | `untested` | No selected test observed the path. It is retained in machine-readable data but omitted from the concise Markdown report. |
 
 No LLM service or LLM API is used anywhere in the experiment pipeline.
+
+### Static patch labels
+
+After the regular experiments have produced both `buggy` and `patched` results, run:
+
+```bash
+uv run patch-label analyze-patches \
+  --output-dir results \
+  --dataset-dir thinkrepair-patch-diffs \
+  --analysis-output results/patch-label-analysis.json
+```
+
+This command analyzes every example for which both phases and the patch file are present. It does not rerun Defects4J tests. It uses the recorded CFGs, path-level labels, patch hunks, and patch-application line locations. Z3 is used to validate the conjunction of CFG edges for each reported witness path.
+
+The three independent tests are conservative:
+
+| Test | `confirmed` evidence |
+| --- | --- |
+| `root_cause_not_fixed` | The same false path remains after patching, or a new patch branch still has a satisfiable false-path witness with the same path context outside the patch. |
+| `boundary_incomplete` | A new branch is created and a patched false path exists on the boundary context of an old false path. |
+| `overrepair` | A patch hunk is not present on any old false path while other patch hunks are; its removal is structurally irrelevant to the bug paths. |
+
+Each test stops as soon as it obtains decisive evidence. `not_confirmed` means the criterion was not established. `inconclusive` is used when proving the criterion requires symbolic output equivalence that the recorded CFG does not contain; it is never silently converted into a positive label. Results and evidence are written to `patch-label-analysis.json`, with a concise table in `patch-label-analysis.md`.
+
+The stored schema 2.0 CFG contains nodes, edges, and source locations, but not branch predicates or symbolic return values. Solver evidence therefore proves CFG-edge reachability; it does not claim a full source-level input theorem when those predicates are unavailable.
 
 ### Result directory
 
@@ -81,7 +106,7 @@ Every edge contains `source`, `target`, and `kind`. `source` and `target` are no
 | `method_id` | Method whose intraprocedural CFG contains the path. |
 | `whole_path` | Complete ordered node sequence, for example `ENTRY -> B0[L33-34] -> B1[L35] -> EXIT`. |
 | `label` | `true`, `false`, `unknown`, or `untested`, using the definitions above. |
-| `observation` | `observed` for a complete runtime path, `unknown` for path-specific incomplete evidence, or `not_observed` when no selected test reached the path. |
+| `observation` | `observed` for a complete runtime path, `incomplete` when an invocation ended before its normal exit, or `not_observed` when no selected test reached the path. |
 | `test_outcome` | `passed`, `failed`, `timed_out`, or `error`; empty for a path with no covering test. |
 | `test_id` | Defects4J test selector in `Class::method` form; empty for a path with no covering test. |
 
@@ -91,11 +116,12 @@ The same path can appear in multiple rows because multiple tests may cover it. A
 
 For the two input directories, use their matching Defects4J releases: `D4JV1.2` requires `tools/defects4j-v1.2` at tag `v1.2.0` with Java 7, and `D4JV2.0` requires `tools/defects4j-v2.0` at tag `v2.0.0` with Java 8. The Java helper itself is built with a newer JDK. See [Ubuntu versioned setup](docs/ubuntu-versioned-setup.md) for the verified setup and checks. `run` selects the correct release for each example automatically.
 
-The project intentionally keeps its dependency set small and unchanged:
+The project intentionally keeps its dependency set small:
 
 | Dependency | Purpose |
 | --- | --- |
-| Python `>=3.11` | Runs the experiment coordinator and report generator. Runtime code uses only the Python standard library. |
+| Python `>=3.11` | Runs the experiment coordinator, report generator, and static patch analyzer. |
+| `z3-solver` | Checks satisfiability of CFG-edge conjunctions for reported witness paths. It does not invent source-level predicates absent from the stored CFG. |
 | `uv` | Creates the virtual environment, installs the project, locks dependencies, and runs every Python command. |
 | Defects4J v1.2.0 and v2.0.0 | Check out the matching dataset version, export metadata, compile projects, and run tests. Keep both clones inside `tools/`. |
 | Java 7, 8, and 11+ JDKs | Java 7/8 run the corresponding Defects4J projects; JDK 11+ compiles the Java helper. |
@@ -104,7 +130,7 @@ The project intentionally keeps its dependency set small and unchanged:
 | JUnit 4.13.2 | Discovers JUnit 3/4 leaf tests for the helper. Test execution remains under Defects4J. |
 | `pytest` | Development-only test dependency installed by `uv sync --dev`. |
 
-There are no Python runtime packages beyond the standard library. Generating `cfg.dot` adds no dependency.
+The analyzer adds only `z3-solver`; the experiment runner otherwise uses the Python standard library. Generating `cfg.dot` adds no dependency.
 
 ## Running
 
@@ -242,3 +268,16 @@ uv run patch-label report EXPERIMENT_JSON [common path options]
 ```
 
 Reads a schema 2.0 `experiment.json` and regenerates the three readable/export files beside it: `report.md`, `cfg.dot`, and `paths.csv`. It does not compile a project, execute tests, apply a patch, or call any external API.
+
+### `analyze-patches`
+
+```text
+uv run patch-label analyze-patches \
+  [--analysis-output FILE] [common path options]
+```
+
+| Option | Default | Meaning |
+| --- | --- | --- |
+| `--analysis-output FILE` | `results/patch-label-analysis.json` | JSON output containing one result and evidence object per patch package. A Markdown summary is written beside it. |
+
+The command stops each of the three independent tests after decisive evidence is found. It never changes an existing experiment result.

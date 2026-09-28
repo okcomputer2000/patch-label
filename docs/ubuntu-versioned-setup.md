@@ -73,4 +73,4 @@ uv run patch-label doctor
 uv run patch-label run --phase both --test-scope all --keep-going
 ```
 
-现有 `labels` 表示路径是否被完整轨迹观测到，以及覆盖它的**整个测试**是否通过。测试结果不能直接当成“路径本身正确”的真值；`unknown`、静态路径枚举截断和不完整调用会在结果中明确保留。TP/TN/FP/FN 的最终定义须先固定，之后才能生成不误导人的汇总表。
+现有 `labels` 表示路径是否被轨迹观测到，以及覆盖它的**整个测试**是否通过。不完整调用会保留 `observation=incomplete`，但使用测试本身的通过/失败结果：预期异常且测试通过标为 `true`，非预期异常且测试失败标为 `false`。`unknown` 只表示超时、执行错误或没有明确结果；静态路径枚举截断仍会在结果中明确保留。TP/TN/FP/FN 的最终定义须先固定，之后才能生成不误导人的汇总表。
