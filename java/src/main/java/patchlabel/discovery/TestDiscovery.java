@@ -1,10 +1,15 @@
 package patchlabel.discovery;
 
 import java.io.BufferedReader;
+import java.lang.reflect.Method;
+import java.lang.reflect.Modifier;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.Set;
+import java.util.TreeSet;
+import junit.framework.TestCase;
 import org.junit.runner.Description;
 import org.junit.runner.Request;
 import org.junit.runner.Runner;
@@ -29,7 +34,12 @@ public final class TestDiscovery {
                 try {
                     Class<?> testClass = Class.forName(className, false, loader);
                     Runner runner = Request.aClass(testClass).getRunner();
-                    emit(runner.getDescription(), className);
+                    boolean ownMethods = emit(runner.getDescription(), className);
+                    // Some old JUnit 3 suite() methods return a different class's suite.
+                    // Discover this class's public test methods so Defects4J can run them by method.
+                    if (!ownMethods && TestCase.class.isAssignableFrom(testClass)) {
+                        emitJUnit3Methods(testClass, className);
+                    }
                 } catch (Throwable throwable) {
                     System.out.println("ERROR\t" + clean(className) + "\t" + clean(throwable.toString()));
                 }
@@ -37,7 +47,7 @@ public final class TestDiscovery {
         }
     }
 
-    private static void emit(Description description, String fallbackClassName) {
+    private static boolean emit(Description description, String fallbackClassName) {
         if (description.isTest()) {
             String className = description.getClassName();
             if (className == null || className.isEmpty()) {
@@ -50,11 +60,32 @@ public final class TestDiscovery {
             if (methodName != null && !methodName.isEmpty()) {
                 System.out.println(
                         "TEST\t" + clean(className) + "\t" + clean(methodName) + "\t" + clean(description.getDisplayName()));
+                return className.equals(fallbackClassName);
             }
-            return;
+            return false;
         }
+        boolean ownMethods = false;
         for (Description child : description.getChildren()) {
-            emit(child, fallbackClassName);
+            ownMethods |= emit(child, fallbackClassName);
+        }
+        return ownMethods;
+    }
+
+    private static void emitJUnit3Methods(Class<?> testClass, String className) {
+        Set<String> methodNames = new TreeSet<String>();
+        for (Method method : testClass.getMethods()) {
+            int modifiers = method.getModifiers();
+            if (method.getName().startsWith("test")
+                    && method.getParameterTypes().length == 0
+                    && method.getReturnType() == Void.TYPE
+                    && Modifier.isPublic(modifiers)
+                    && !Modifier.isStatic(modifiers)) {
+                methodNames.add(method.getName());
+            }
+        }
+        for (String methodName : methodNames) {
+            System.out.println("TEST\t" + clean(className) + "\t" + clean(methodName)
+                    + "\t" + clean(methodName + "(" + className + ")"));
         }
     }
 

@@ -156,3 +156,24 @@ def test_java7_helper_records_a_java7_class(tmp_path: Path) -> None:
     assert result.stdout.strip() == "1"
     assert any("sample.Branchy#classify(I)I:ENTRY" in path.read_text(encoding="utf-8")
                for path in traces.glob("trace-*.tsv"))
+
+
+def test_java7_discovery_recovers_methods_from_misdirected_junit3_suite(tmp_path: Path) -> None:
+    repo_root = Path.cwd()
+    helper = build_helper(repo_root, repo_root / ".patch-label", release=7)
+    classes = tmp_path / "classes"
+    classes.mkdir()
+    run_command(
+        ["javac", "--release", "7", "-cp", str(helper), "-d", str(classes),
+         "tests/fixtures/java/sample/OtherLegacyTest.java",
+         "tests/fixtures/java/sample/RedirectedSuiteTest.java"],
+        cwd=repo_root,
+    )
+    class_list = tmp_path / "class-list.txt"
+    class_list.write_text("sample.RedirectedSuiteTest\n", encoding="utf-8")
+    result = run_command(
+        ["java", "-cp", f"{helper}:{classes}",
+         "patchlabel.discovery.TestDiscovery", str(class_list)],
+        cwd=repo_root,
+    )
+    assert "TEST\tsample.RedirectedSuiteTest\ttestOwn\t" in result.stdout

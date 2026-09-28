@@ -70,18 +70,10 @@ def discover_test_cases(
     discovered_classes = {case.class_name for case in cases.values()}
     for class_name in test_classes:
         if class_name not in discovered_classes:
-            selector = class_name
-            cases[selector] = TestCase(
-                selector=selector,
-                class_name=class_name,
-                method_name=None,
-                display_name=class_name,
-                granularity="class",
-            )
             errors.append(
                 {
                     "class_name": class_name,
-                    "message": "No leaf test methods discovered; using class-level fallback",
+                    "message": "No runnable test methods discovered; class-only selectors are not supported by historical Defects4J",
                 }
             )
     return sorted(cases.values(), key=lambda case: case.selector), errors
