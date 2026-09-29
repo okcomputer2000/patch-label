@@ -14,12 +14,37 @@
 
 | 标签 | 含义 |
 | --- | --- |
-| `true` | 一个通过的测试观测到了这条完整路径。 |
-| `false` | 一个失败的测试观测到了这条完整路径。 |
-| `unknown` | 该路径可能相关，但路径证据不完整，或覆盖它的测试超时/执行出错。 |
+| `true` | 覆盖该路径的测试通过；如果不完整调用对应的是预期异常，也标为 `true`。 |
+| `false` | 覆盖该路径的测试失败；如果不完整调用对应的是非预期异常，也标为 `false`。 |
+| `unknown` | 测试超时、执行出错，或没有明确的通过/失败结果。 |
 | `untested` | 选中的测试都没有观测到该路径。机器可读数据保留它，但简明 Markdown 报告不展示它。 |
 
 整个实验流程不使用任何 LLM 服务或 LLM API。
+
+### 补丁静态标签
+
+在已经生成某个样例的 `buggy` 与 `patched` 结果后，运行：
+
+```bash
+uv run patch-label analyze-patches \
+  --output-dir results \
+  --dataset-dir thinkrepair-patch-diffs \
+  --analysis-output results/patch-label-analysis.json
+```
+
+命令会分析同时存在两个阶段结果和补丁文件的所有样例，不会重新运行 Defects4J 测试。它使用已有的完整 CFG、路径级标签、补丁 hunk 以及补丁应用时记录的真实源码行号。对报告中的见证路径，使用 Z3 验证其 CFG 边约束是否可满足。
+
+三个测试彼此独立，针对完整路径采用保守判定。某个标签一旦得到第一条决定性证据就立即停止该标签测试，不再检查后续候选路径：
+
+| 测试 | `confirmed` 的证据 |
+| --- | --- |
+| `root_cause_not_fixed` | 打补丁后仍存在同一条 `false` 路径，或者补丁新建分支后仍存在上下文相同且可满足的 `false` 路径。 |
+| `boundary_incomplete` | 原来的 `false` 路径经过被修改的补丁块，并且求解器能为对称差 `(C_old AND NOT C_new) OR (NOT C_old AND C_new)` 找到模型。`C_old` 与 `C_new` 只包含抽象 CFG 分支身份和边极性，不编码具体 Java 输入值。 |
+| `overrepair` | 补丁至少有两个修改块。先检查某块是否不在任何原 `false` 路径上；若是，立即确认。否则从“全部补丁块均已应用”的新状态出发，每次只还原一个块：不可达的还原变体跳过；可达且其符号化输出与完整补丁输出等价时确认。 |
+
+每个测试一旦得到决定性证据就立即停止。`not_confirmed` 表示没有建立对应标准；如果必须进行符号化输出等价性证明，而现有 CFG 不包含足够信息，则标为 `inconclusive`，不会静默当成阳性标签。结果和证据写入 `patch-label-analysis.json`，同时生成简明表格 `patch-label-analysis.md`。
+
+现有结果使用 schema 2.0 CFG，其中保存节点、边、源码位置和边类型。分析器为每个有多个出口的 CFG 节点分配抽象身份，并为路径选择的出口分配极性（`true`、`false`、`case:<index>` 或 `default`），再沿完整路径合取这些抽象选择。这个分析不会推导具体 Java 输入值，因此不会声称求出了 `x = 5` 或 `x = null`。它不会重新运行实验，也不会修改现有实验数据。缺少符号化输出信息时保持 `inconclusive`，绝不当成阳性标签。每个确认结果都包含 `stopped_after` 和 `evidence`：其中保存路径 ID、补丁块编号、求解公式、可满足性、模型，以及确认前执行过的全部单块还原尝试（多余修复）。
 
 ### 结果目录
 
@@ -81,7 +106,7 @@ results/<dataset-version>/<Project-ID>/<buggy|patched>/runs/<run-fingerprint>/
 | `method_id` | 这条路径所属的方法内 CFG。 |
 | `whole_path` | 完整有序节点序列，例如 `ENTRY -> B0[L33-34] -> B1[L35] -> EXIT`。 |
 | `label` | `true`、`false`、`unknown` 或 `untested`，含义见上表。 |
-| `observation` | 完整运行路径为 `observed`；路径相关证据不完整为 `unknown`；没有选中测试覆盖为 `not_observed`。 |
+| `observation` | 完整运行路径为 `observed`；调用在正常退出前结束为 `incomplete`；没有选中测试覆盖为 `not_observed`。 |
 | `test_outcome` | `passed`、`failed`、`timed_out` 或 `error`；没有覆盖测试时为空。 |
 | `test_id` | `Class::method` 形式的 Defects4J 测试标识；没有覆盖测试时为空。 |
 
@@ -91,11 +116,12 @@ results/<dataset-version>/<Project-ID>/<buggy|patched>/runs/<run-fingerprint>/
 
 两个输入目录必须使用对应年代的 Defects4J：`D4JV1.2` 对应 `tools/defects4j-v1.2` 的 `v1.2.0` 标签和 Java 7，`D4JV2.0` 对应 `tools/defects4j-v2.0` 的 `v2.0.0` 标签和 Java 8。Java helper 本身由较新的 JDK 编译。已经验证的安装与检查步骤见 [Ubuntu 版本化配置](docs/ubuntu-versioned-setup.md)。`run` 会按样例自动选择对应版本。
 
-项目保持少量且不变的依赖集合：
+项目保持少量依赖：
 
 | 依赖 | 用途 |
 | --- | --- |
-| Python `>=3.11` | 运行实验协调器和报告生成器；运行时代码只使用 Python 标准库。 |
+| Python `>=3.11` | 运行实验协调器、报告生成器和补丁静态分析器。 |
+| `z3-solver` | 验证抽象 CFG 分支选择公式和结构路径见证是否可满足。 |
 | `uv` | 创建虚拟环境、安装项目、锁定依赖，并执行所有 Python 命令。 |
 | Defects4J v1.2.0 与 v2.0.0 | 按输入套件版本 checkout、导出元数据、编译并运行测试。两个克隆均放在 `tools/` 中。 |
 | Java 7、8 和 11+ JDK | Java 7/8 分别运行对应版本的 Defects4J 项目；JDK 11+ 编译 Java helper。 |
@@ -104,7 +130,7 @@ results/<dataset-version>/<Project-ID>/<buggy|patched>/runs/<run-fingerprint>/
 | JUnit 4.13.2 | 为 helper 发现 JUnit 3/4 叶子测试；实际测试执行仍由 Defects4J 完成。 |
 | `pytest` | 仅开发测试使用，由 `uv sync --dev` 安装。 |
 
-除标准库外没有 Python 运行时依赖。生成 `cfg.dot` 也没有增加任何依赖。
+分析器额外使用 `z3-solver`；实验执行器其余部分仍只使用 Python 标准库。生成 `cfg.dot` 不会增加依赖。
 
 ## 启动运行
 
@@ -242,3 +268,16 @@ uv run patch-label report EXPERIMENT_JSON [通用路径参数]
 ```
 
 读取 schema 2.0 的 `experiment.json`，在同目录重新生成三个易读/导出文件：`report.md`、`cfg.dot` 和 `paths.csv`。该命令不会编译项目、执行测试、应用补丁或调用任何外部 API。
+
+### `analyze-patches`
+
+```text
+uv run patch-label analyze-patches \
+  [--analysis-output FILE] [通用路径参数]
+```
+
+| 参数 | 默认值 | 含义 |
+| --- | --- | --- |
+| `--analysis-output FILE` | `results/patch-label-analysis.json` | 写入每个补丁包的三个测试结果和证据；同时在旁边生成 Markdown 汇总。 |
+
+三个独立测试分别在得到决定性证据后立即停止。该命令不会修改已有实验结果。

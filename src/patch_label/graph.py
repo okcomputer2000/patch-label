@@ -101,7 +101,10 @@ def split_method_invocations(
                 if node_id == exit_node and index + 1 < len(nodes):
                     next_node = nodes[index + 1]
                     previous_node = stack[-1][-1]
-                    if next_node != entry and (previous_node, next_node) in known_edges:
+                    if (
+                        next_node not in {entry, exit_node}
+                        and (previous_node, next_node) in known_edges
+                    ):
                         continue
                 stack[-1].append(node_id)
                 if node_id == exit_node:
@@ -124,8 +127,6 @@ def _is_contiguous_subpath(needle: list[str], haystack: list[str]) -> bool:
 def _whole_path_label(observation: str, test_outcome: str | None) -> str:
     if observation == "not_observed":
         return "untested"
-    if observation != "observed":
-        return "unknown"
     if test_outcome == "passed":
         return "true"
     if test_outcome == "failed":
@@ -274,15 +275,16 @@ def label_graph(
             )
             if affected_by_incomplete_invocation:
                 path_has_label = True
+                test_outcome = test.get(
+                    "execution_status",
+                    "passed" if test["status"] == "true" else "failed",
+                )
                 labels.append({
                     "path_id": path["id"],
-                    "observation": "unknown",
-                    "test_outcome": test.get(
-                        "execution_status",
-                        "passed" if test["status"] == "true" else "failed",
-                    ),
+                    "observation": "incomplete",
+                    "test_outcome": test_outcome,
                     "test_id": selector,
-                    "label": "unknown",
+                    "label": _whole_path_label("incomplete", test_outcome),
                 })
         if not path_has_label:
             labels.append({

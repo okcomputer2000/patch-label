@@ -11,6 +11,7 @@ from pathlib import Path
 
 from .dataset import (DatasetError, discover_examples, missing_versioned_bugs,
                       missing_versioned_revisions, select_examples)
+from .analyzer import analyze_results
 from .defects4j import Defects4J
 from .experiment import ExperimentConfig, ExperimentRunner
 from .io import read_json, write_json
@@ -77,6 +78,18 @@ def build_parser() -> argparse.ArgumentParser:
     )
     _common_paths(report)
     report.add_argument("experiment", type=Path)
+
+    analyze = subparsers.add_parser(
+        "analyze-patches",
+        help="Assign static root-cause, boundary, and overrepair labels from existing results",
+    )
+    _common_paths(analyze)
+    analyze.add_argument(
+        "--analysis-output",
+        type=Path,
+        default=Path("results/patch-label-analysis.json"),
+        help="JSON file receiving labels and evidence",
+    )
 
     run = subparsers.add_parser("run", help="Run one or more experiment examples")
     _common_paths(run)
@@ -257,6 +270,15 @@ def command_report(args: argparse.Namespace) -> int:
     return 0
 
 
+def command_analyze_patches(args: argparse.Namespace) -> int:
+    paths = _paths(args)
+    output = _resolve(paths["repo_root"], args.analysis_output).resolve()
+    document = analyze_results(paths["output_dir"], paths["dataset_dir"], output)
+    print(output)
+    print(f"analyzed {document['count']} patch package(s)")
+    return 0
+
+
 def command_run(args: argparse.Namespace) -> int:
     paths = _paths(args)
     if args.defects4j_dir != Path("tools/defects4j"):
@@ -382,6 +404,7 @@ def main(argv: list[str] | None = None) -> int:
         "init-defects4j": command_init,
         "build-helper": command_build_helper,
         "report": command_report,
+        "analyze-patches": command_analyze_patches,
         "run": command_run,
     }
     try:

@@ -195,7 +195,7 @@ def render_markdown(document: dict[str, Any], rows: list[dict[str, str]]) -> str
         "",
         "## Paths and labels",
         "",
-        "`true` means a passing test observed the complete path; `false` means a failing test observed it; `unknown` means relevant evidence was incomplete or the covering test timed out/errored. Paths without one of these labels are omitted here and remain available in `paths.csv`.",
+        "`true` means the covering test passed; `false` means the covering test failed; `unknown` means the test timed out, errored, or has no definitive pass/fail outcome. An incomplete invocation keeps `observation=incomplete` but still uses the test outcome, so an expected exception in a passing test is `true` and an unexpected failure is `false`. Paths without one of these labels are omitted here and remain available in `paths.csv`.",
         "",
     ]
     if labeled_paths:
