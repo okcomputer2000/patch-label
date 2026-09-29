@@ -34,17 +34,29 @@ uv run patch-label analyze-patches \
 
 This command analyzes every example for which both phases and the patch file are present. It does not rerun Defects4J tests. It uses the recorded CFGs, path-level labels, patch hunks, and patch-application line locations. Z3 is used to validate the conjunction of CFG edges for each reported witness path.
 
-The three independent tests are conservative:
+The three independent tests are conservative and operate on complete paths. A
+test stops immediately after its first decisive witness; later candidates are
+not evaluated for that label.
 
 | Test | `confirmed` evidence |
 | --- | --- |
 | `root_cause_not_fixed` | The same false path remains after patching, or a new patch branch still has a satisfiable false-path witness with the same path context outside the patch. |
-| `boundary_incomplete` | A new branch is created and a patched false path exists on the boundary context of an old false path. |
-| `overrepair` | A patch hunk is not present on any old false path while other patch hunks are; its removal is structurally irrelevant to the bug paths. |
+| `boundary_incomplete` | An original `false` path reaches a changed patch unit, and the solver finds a model for the symmetric difference `(C_old AND NOT C_new) OR (NOT C_old AND C_new)`. `C_old` and `C_new` contain only abstract CFG branch identities and edge polarities; they intentionally do not encode concrete Java values. |
+| `overrepair` | The patch has at least two units. First, a unit absent from every original `false` path immediately confirms the label. Otherwise, each unit is reverted alone from a fresh all-units-applied state: an unreachable rollback is skipped; a reachable rollback confirms the label only when its symbolic output is equivalent to the full patch output. |
 
 Each test stops as soon as it obtains decisive evidence. `not_confirmed` means the criterion was not established. `inconclusive` is used when proving the criterion requires symbolic output equivalence that the recorded CFG does not contain; it is never silently converted into a positive label. Results and evidence are written to `patch-label-analysis.json`, with a concise table in `patch-label-analysis.md`.
 
-The stored schema 2.0 CFG contains nodes, edges, and source locations, but not branch predicates or symbolic return values. Solver evidence therefore proves CFG-edge reachability; it does not claim a full source-level input theorem when those predicates are unavailable.
+Existing results use the schema 2.0 CFG, which stores nodes, edges, source
+locations, and edge kinds. The analyzer assigns each branching CFG node an
+abstract identity and each selected outgoing edge a polarity (`true`, `false`,
+`case:<index>`, or `default`). It conjoins those abstract choices over the
+complete path. No concrete Java input value is inferred, so this analysis does
+not claim to solve for `x = 5` or `x = null`. It does not rerun or modify the
+existing experiment data. Missing symbolic output information remains
+`inconclusive`, never a positive label. Each confirmed result contains
+`stopped_after` and an `evidence` object with path IDs, patch-unit IDs, the
+solver formula, satisfiability status, model, and (for overrepair) every
+rollback attempt made before confirmation.
 
 ### Result directory
 
@@ -121,7 +133,7 @@ The project intentionally keeps its dependency set small:
 | Dependency | Purpose |
 | --- | --- |
 | Python `>=3.11` | Runs the experiment coordinator, report generator, and static patch analyzer. |
-| `z3-solver` | Checks satisfiability of CFG-edge conjunctions for reported witness paths. It does not invent source-level predicates absent from the stored CFG. |
+| `z3-solver` | Checks satisfiability of abstract CFG branch-choice formulas and structural witness constraints. |
 | `uv` | Creates the virtual environment, installs the project, locks dependencies, and runs every Python command. |
 | Defects4J v1.2.0 and v2.0.0 | Check out the matching dataset version, export metadata, compile projects, and run tests. Keep both clones inside `tools/`. |
 | Java 7, 8, and 11+ JDKs | Java 7/8 run the corresponding Defects4J projects; JDK 11+ compiles the Java helper. |
