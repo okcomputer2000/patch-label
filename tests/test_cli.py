@@ -72,3 +72,37 @@ def test_run_executes_examples_concurrently_with_version_routing(tmp_path: Path,
 
     assert cli.command_run(args) == 0
     assert maximum == 2
+
+
+def test_math_uses_java8_without_changing_defects4j_release() -> None:
+    math = Example("D4JV1.2", "Math", 91, Path("."), Path("patch"))
+    closure = Example("D4JV1.2", "Closure", 122, Path("."), Path("patch"))
+    assert cli._runtime_for_example(math) == ("v1.2.0", 8)
+    assert cli._runtime_for_example(closure) == ("v1.2.0", 7)
+
+
+def test_run_routes_math_and_closure_to_distinct_jdks(tmp_path: Path, monkeypatch) -> None:
+    examples = [
+        Example("D4JV1.2", "Math", 91, tmp_path, tmp_path / "math.patch"),
+        Example("D4JV1.2", "Closure", 122, tmp_path, tmp_path / "closure.patch"),
+    ]
+    routed = []
+
+    class FakeRunner:
+        def __init__(self, config):
+            assert config.expected_defects4j_tag == "v1.2.0"
+            self.java_major = config.java_major
+
+        def run(self, example, phases):
+            routed.append((example.key, self.java_major))
+            output = tmp_path / f"{example.key}.json"
+            output.write_text(json.dumps({"summary": {}}), encoding="utf-8")
+            return [output]
+
+    monkeypatch.setattr(cli, "discover_examples", lambda dataset_dir: examples)
+    monkeypatch.setattr(cli, "missing_versioned_bugs", lambda examples, dirs: [])
+    monkeypatch.setattr(cli, "missing_versioned_revisions", lambda examples, dirs: [])
+    monkeypatch.setattr(cli, "ExperimentRunner", FakeRunner)
+    args = cli.build_parser().parse_args(["run", "--repo-root", str(tmp_path)])
+    assert cli.command_run(args) == 0
+    assert routed == [("Math-91", 8), ("Closure-122", 7)]

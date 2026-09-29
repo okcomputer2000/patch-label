@@ -220,15 +220,38 @@ def label_graph(
         sorted(observed_additions.values(), key=lambda item: (item["method_id"], item["id"]))
     )
 
+    # Most tests never enter a given modified method. Index their invocations
+    # once instead of scanning every test (and every incomplete invocation)
+    # for each static path.
+    incomplete_by_test_method: dict[tuple[str, str], list[dict[str, Any]]] = {}
+    partial_methods_by_selector: dict[str, set[str]] = {}
+    for invocation in incomplete_invocations:
+        key = (invocation["test_id"], invocation["method_id"])
+        incomplete_by_test_method.setdefault(key, []).append(invocation)
+        partial_methods_by_selector.setdefault(invocation["test_id"], set()).add(invocation["method_id"])
+    method_tests: dict[str, list[tuple[dict[str, Any], list[dict[str, Any]], list[dict[str, Any]]]]] = {}
+    for test in tests:
+        selector = test["test"]["selector"]
+        complete_by_method: dict[str, list[dict[str, Any]]] = {}
+        for invocation in invocations_by_test[selector]:
+            complete_by_method.setdefault(invocation["method_id"], []).append(invocation)
+        methods = set(complete_by_method)
+        methods.update(partial_methods_by_selector.get(selector, set()))
+        for method in methods:
+            method_tests.setdefault(method, []).append((
+                test,
+                complete_by_method.get(method, []),
+                incomplete_by_test_method.get((selector, method), []),
+            ))
+
     labels: list[dict[str, Any]] = []
     for path in path_set:
         path_has_label = False
-        for test in tests:
+        for test, complete_invocations, partial_invocations in method_tests.get(path["method_id"], []):
             selector = test["test"]["selector"]
             covered = any(
-                invocation["method_id"] == path["method_id"]
-                and _is_contiguous_subpath(path["nodes"], invocation["nodes"])
-                for invocation in invocations_by_test[selector]
+                _is_contiguous_subpath(path["nodes"], invocation["nodes"])
+                for invocation in complete_invocations
             )
             if covered:
                 path_has_label = True
@@ -246,10 +269,8 @@ def label_graph(
                 )
                 continue
             affected_by_incomplete_invocation = any(
-                invocation["test_id"] == selector
-                and invocation["method_id"] == path["method_id"]
-                and _is_contiguous_subpath(invocation["nodes"], path["nodes"])
-                for invocation in incomplete_invocations
+                _is_contiguous_subpath(invocation["nodes"], path["nodes"])
+                for invocation in partial_invocations
             )
             if affected_by_incomplete_invocation:
                 path_has_label = True

@@ -24,6 +24,17 @@ VERSION_RUNTIMES = {
 }
 
 
+def _runtime_for_example(example: object) -> tuple[str, int]:
+    version = getattr(example, "dataset_version")
+    if version not in VERSION_RUNTIMES:
+        raise RuntimeError(f"Unsupported dataset version: {version}")
+    tag, java_major = VERSION_RUNTIMES[version]
+    # Defects4J 1.2 Math uses Ant's JavaScript scriptdef, which needs Java 8.
+    if version == "D4JV1.2" and getattr(example, "project") == "Math":
+        java_major = 8
+    return tag, java_major
+
+
 def _default_root() -> Path:
     return Path.cwd()
 
@@ -142,6 +153,17 @@ def command_doctor(args: argparse.Namespace) -> int:
         except Exception as exc:
             ready, detail = False, str(exc)
         checks.append({"name": f"{version} runtime", "ok": ready, "detail": detail})
+    try:
+        math_runtime = Defects4J(
+            _resolve(paths["repo_root"], args.defects4j_v1_dir).resolve(),
+            java_major=8,
+            state_dir=paths["state_dir"],
+        )
+        math_java_home = math_runtime.java_home
+        checks.append({"name": "D4JV1.2 Math Java 8", "ok": math_java_home is not None,
+                       "detail": str(math_java_home)})
+    except Exception as exc:
+        checks.append({"name": "D4JV1.2 Math Java 8", "ok": False, "detail": str(exc)})
     try:
         examples = discover_examples(paths["dataset_dir"])
         vintage_dirs = {
@@ -265,22 +287,25 @@ def command_run(args: argparse.Namespace) -> int:
         fresh=args.fresh,
         resume=args.resume,
     )
-    runners: dict[str, ExperimentRunner] = {}
-    for version in {example.dataset_version for example in examples}:
-        if version not in VERSION_RUNTIMES:
-            raise RuntimeError(f"Unsupported dataset version: {version}")
-        tag, java_major = VERSION_RUNTIMES[version]
+    runners: dict[tuple[str, int], ExperimentRunner] = {}
+    for example in examples:
+        version = example.dataset_version
+        tag, java_major = _runtime_for_example(example)
+        runner_key = (version, java_major)
+        if runner_key in runners:
+            continue
         directory = vintage_dirs[version]
         version_config = replace(config, defects4j_dir=directory.resolve(),
                                  expected_defects4j_tag=tag, java_major=java_major)
-        runners[version] = ExperimentRunner(version_config)
+        runners[runner_key] = ExperimentRunner(version_config)
     failures: list[dict[str, str]] = []
 
     def run_example(index: int, example: object) -> list[Path]:
         dataset_version = getattr(example, "dataset_version")
         key = getattr(example, "key")
         print(f"[START {index}/{len(examples)}] {dataset_version}/{key}", flush=True)
-        return runners[dataset_version].run(example, phases)  # type: ignore[arg-type]
+        _, java_major = _runtime_for_example(example)
+        return runners[(dataset_version, java_major)].run(example, phases)  # type: ignore[arg-type]
 
     def record_result(index: int, example: object, outputs: list[Path]) -> None:
         dataset_version = getattr(example, "dataset_version")

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import signal
 import subprocess
 import time
 from pathlib import Path
@@ -28,21 +29,28 @@ def run_command(
     if env:
         merged_env.update(env)
     started = time.monotonic()
+    process = subprocess.Popen(
+        command,
+        cwd=cwd,
+        env=merged_env,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        errors="replace",
+        start_new_session=os.name == "posix",
+    )
     try:
-        completed = subprocess.run(
-            command,
-            cwd=cwd,
-            env=merged_env,
-            text=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            timeout=timeout,
-            errors="replace",
-            check=False,
-        )
+        stdout, stderr = process.communicate(timeout=timeout)
     except subprocess.TimeoutExpired as exc:
-        stdout = exc.stdout.decode("utf-8", errors="replace") if isinstance(exc.stdout, bytes) else (exc.stdout or "")
-        stderr = exc.stderr.decode("utf-8", errors="replace") if isinstance(exc.stderr, bytes) else (exc.stderr or "")
+        # defects4j starts Ant and Java children. Killing only the Perl parent
+        # leaves those children writing into the next test's checkout.
+        if os.name == "posix":
+            os.killpg(process.pid, signal.SIGKILL)
+        else:
+            process.kill()
+        stdout, stderr = process.communicate()
+        stdout = stdout or ""
+        stderr = stderr or ""
         result = CommandResult(
             args=command,
             return_code=124,
@@ -54,9 +62,9 @@ def run_command(
 
     result = CommandResult(
         args=command,
-        return_code=completed.returncode,
-        stdout=completed.stdout,
-        stderr=completed.stderr,
+        return_code=process.returncode,
+        stdout=stdout,
+        stderr=stderr,
         duration_seconds=time.monotonic() - started,
     )
     if check and result.return_code != 0:
@@ -65,4 +73,3 @@ def run_command(
             result,
         )
     return result
-

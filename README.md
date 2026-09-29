@@ -89,7 +89,7 @@ The same path can appear in multiple rows because multiple tests may cover it. A
 
 ## Dependencies
 
-For the two input directories, use their matching Defects4J releases: `D4JV1.2` requires `tools/defects4j-v1.2` at tag `v1.2.0` with Java 7, and `D4JV2.0` requires `tools/defects4j-v2.0` at tag `v2.0.0` with Java 8. The Java helper itself is built with a newer JDK. See [Ubuntu versioned setup](docs/ubuntu-versioned-setup.md) for the verified setup and checks. `run` selects the correct release for each example automatically.
+For the two input directories, use their matching Defects4J releases: `D4JV1.2` requires `tools/defects4j-v1.2` at tag `v1.2.0` (Java 7 except Math, which requires Java 8 for its Ant JavaScript build task), and `D4JV2.0` requires `tools/defects4j-v2.0` at tag `v2.0.0` with Java 8. The Java helper itself is built with a newer JDK. See [Ubuntu versioned setup](docs/ubuntu-versioned-setup.md) for the verified setup and checks. `run` selects the correct release and JDK for each example automatically.
 
 The project intentionally keeps its dependency set small and unchanged:
 

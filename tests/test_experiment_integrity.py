@@ -6,6 +6,8 @@ from patch_label.experiment import ExperimentConfig, ExperimentError, Experiment
 from patch_label.models import Example
 from patch_label.models import CommandResult
 from patch_label.models import TestCase as SelectedTest
+from patch_label.io import write_json_gz
+from patch_label.experiment import _safe_name
 
 
 def test_trace_parser_keeps_threads_separate_and_reports_dropped_events(tmp_path: Path) -> None:
@@ -129,3 +131,24 @@ def test_command_failure_without_failing_tests_is_an_error(tmp_path: Path) -> No
     )
     assert result["execution_status"] == "error"
     assert result["status"] == "false"
+
+
+def test_resume_retries_execution_error_instead_of_reusing_it(tmp_path: Path) -> None:
+    runner = object.__new__(ExperimentRunner)
+    runner.config = ExperimentConfig(tmp_path, tmp_path, tmp_path, tmp_path, tmp_path)
+    calls = []
+    runner.d4j = type("FakeD4J", (), {
+        "test": lambda self, *args, **kwargs: (
+            calls.append(args) or CommandResult((), 0, "", "", 0), []
+        ),
+    })()
+    test = SelectedTest("Sample::test", "Sample", "test", "Sample::test")
+    output = tmp_path / "out"
+    cached = output / "tests" / f"{_safe_name(test.selector)}.json.gz"
+    write_json_gz(cached, {"run_fingerprint": "fingerprint", "execution_status": "error"})
+    result = runner._run_or_load_test(
+        tmp_path, output, tmp_path / "runtime", tmp_path / "agent.jar",
+        tmp_path / "bootstrap.jar", tmp_path / "includes.txt", test, "fingerprint",
+    )
+    assert len(calls) == 1
+    assert result["execution_status"] == "passed"

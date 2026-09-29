@@ -241,8 +241,9 @@ class ExperimentRunner:
                 includes_file.write_text(
                     "\n".join(metadata["classes.modified"]) + "\n", encoding="utf-8"
                 )
-                test_results = [
-                    self._run_or_load_test(
+                consecutive_errors = 0
+                for test in tests:
+                    result = self._run_or_load_test(
                         checkout,
                         output_dir,
                         runtime_dir,
@@ -252,8 +253,19 @@ class ExperimentRunner:
                         test,
                         fingerprint,
                     )
-                    for test in tests
-                ]
+                    test_results.append(result)
+                    execution_status = result["execution_status"]
+                    if execution_status == "timed_out":
+                        raise ExperimentError(
+                            f"{example.key} {phase}: test timed out ({test.selector}); "
+                            "stopped before later tests use a possibly damaged checkout"
+                        )
+                    consecutive_errors = consecutive_errors + 1 if execution_status == "error" else 0
+                    if consecutive_errors >= 3:
+                        raise ExperimentError(
+                            f"{example.key} {phase}: three consecutive test execution errors "
+                            f"(last: {test.selector}); stopped to prevent cascading failures"
+                        )
             finally:
                 shutil.rmtree(runtime_dir, ignore_errors=True)
 
@@ -432,7 +444,8 @@ class ExperimentRunner:
         if result_file.is_file() and self.config.resume and not self.config.fresh:
             try:
                 cached = read_json_gz(result_file)
-                if cached.get("run_fingerprint") == fingerprint:
+                if (cached.get("run_fingerprint") == fingerprint
+                        and cached.get("execution_status") in {"passed", "failed"}):
                     return cached
             except (ValueError, OSError, AttributeError):
                 pass
