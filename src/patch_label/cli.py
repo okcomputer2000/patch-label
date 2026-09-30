@@ -251,7 +251,9 @@ def command_report(args: argparse.Namespace) -> int:
 def command_analyze_patches(args: argparse.Namespace) -> int:
     paths = _paths(args)
     output = _resolve(paths["repo_root"], args.analysis_output).resolve()
-    document = analyze_results(paths["output_dir"], paths["dataset_dir"], output)
+    document = analyze_results(
+        paths["output_dir"], paths["dataset_dir"], output, paths["state_dir"]
+    )
     print(output)
     print(f"analyzed {document['count']} patch package(s)")
     return 0
