@@ -1,4 +1,6 @@
 import sys
+import os
+import time
 from pathlib import Path
 
 import pytest
@@ -16,3 +18,23 @@ def test_timeout_keeps_text_output(tmp_path: Path) -> None:
     assert caught.value.result.return_code == 124
     assert "ready" in caught.value.result.output
     assert "Timed out" in caught.value.result.output
+
+
+@pytest.mark.skipif(os.name != "posix", reason="POSIX process groups")
+def test_timeout_kills_descendant_process(tmp_path: Path) -> None:
+    pid_file = tmp_path / "child.pid"
+    script = (
+        "import subprocess,sys,time; "
+        "child=subprocess.Popen([sys.executable,'-c','import time; time.sleep(30)']); "
+        "open(sys.argv[1],'w').write(str(child.pid)); time.sleep(30)"
+    )
+    with pytest.raises(CommandError):
+        run_command([sys.executable, "-c", script, str(pid_file)], cwd=tmp_path, timeout=0.5)
+    pid = int(pid_file.read_text(encoding="utf-8"))
+    for _ in range(20):
+        status = Path(f"/proc/{pid}/stat")
+        if not status.exists() or status.read_text().split()[2] == "Z":
+            break
+        time.sleep(0.05)
+    else:
+        pytest.fail("grandchild survived the command timeout")

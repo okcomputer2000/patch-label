@@ -1,6 +1,6 @@
 # Ubuntu 正式实验环境
 
-正式运行必须使用输入对应的 Defects4J 历史版。`D4JV1.2` 对应 `v1.2.0` 和 Java 7；`D4JV2.0` 对应 `v2.0.0` 和 Java 8。辅助程序用 JDK 11 或更新版本编译，其中 Java 7 专用 JAR 使用 ASM 5.2。当前 Ubuntu 测试环境已按此配置，以下步骤用于重新搭建。
+正式运行必须使用输入对应的 Defects4J 历史版。`D4JV1.2` 对应 `v1.2.0`，默认使用 Java 7；其中 Math 的 Ant 构建脚本需要 JavaScript 引擎，必须改用 Java 8。`D4JV2.0` 对应 `v2.0.0` 和 Java 8。辅助程序用 JDK 11 或更新版本编译，其中 Java 7 专用 JAR 使用 ASM 5.2。以下步骤用于重新搭建。
 
 ## 安装历史版工具
 
