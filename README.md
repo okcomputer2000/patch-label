@@ -273,6 +273,10 @@ uv run patch-label run \
 | `--no-resume` | Off | Disables reuse of matching per-test results and reruns the selected phase. |
 | `--keep-going` | Off | Continues with later examples after a failure and writes `results/failures.json`. |
 
+A timed-out test is retried once after a clean checkout and rebuild. If it
+times out again, its label remains `unknown`; the runner restores the checkout
+before continuing with the remaining tests and reports the phase as incomplete.
+
 ### `report`
 
 ```text

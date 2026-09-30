@@ -253,13 +253,36 @@ class ExperimentRunner:
                         test,
                         fingerprint,
                     )
-                    test_results.append(result)
                     execution_status = result["execution_status"]
                     if execution_status == "timed_out":
-                        raise ExperimentError(
-                            f"{example.key} {phase}: test timed out ({test.selector}); "
-                            "stopped before later tests use a possibly damaged checkout"
+                        stem = _safe_name(test.selector)
+                        retry_dir = output_dir / "test-retries"
+                        retry_dir.mkdir(parents=True, exist_ok=True)
+                        shutil.copy2(
+                            output_dir / "tests" / f"{stem}.json.gz",
+                            retry_dir / f"{stem}-first-timeout.json.gz",
                         )
+                        self._restore_after_timeout(
+                            example, phase, checkout, metadata, output_dir, test, 1
+                        )
+                        result = self._run_or_load_test(
+                            checkout,
+                            output_dir,
+                            runtime_dir,
+                            runtime_jar,
+                            bootstrap_jar,
+                            includes_file,
+                            test,
+                            fingerprint,
+                        )
+                        result["timeout_retries"] = 1
+                        write_json_gz(output_dir / "tests" / f"{stem}.json.gz", result)
+                        execution_status = result["execution_status"]
+                        if execution_status == "timed_out":
+                            self._restore_after_timeout(
+                                example, phase, checkout, metadata, output_dir, test, 2
+                            )
+                    test_results.append(result)
                     consecutive_errors = consecutive_errors + 1 if execution_status == "error" else 0
                     if consecutive_errors >= 3:
                         raise ExperimentError(
@@ -330,6 +353,35 @@ class ExperimentRunner:
         write_json(final_file, document)
         write_human_reports(document, output_dir)
         return final_file
+
+    def _restore_after_timeout(
+        self,
+        example: Example,
+        phase: Phase,
+        checkout: Path,
+        metadata: dict[str, Any],
+        output_dir: Path,
+        test: TestCase,
+        attempt: int,
+    ) -> None:
+        """Rebuild a checkout after killing a timed-out Defects4J process tree."""
+        self.d4j.checkout(example, checkout, fresh=True)
+        if phase == "patched":
+            candidates = class_source_candidates(
+                checkout, metadata["dir.src.classes"], metadata["classes.modified"]
+            )
+            apply_context_patch(example.patch_file, candidates)
+        restored = self._metadata(checkout)
+        for key in ("dir.bin.classes", "classes.modified"):
+            if restored[key] != metadata[key]:
+                raise ExperimentError(f"Metadata changed while restoring {example.key}: {key}")
+        compiled = self.d4j.compile(checkout, timeout=self.config.compile_timeout)
+        _write_log(
+            output_dir / "timeout-recovery" / f"{_safe_name(test.selector)}-{attempt}.log",
+            compiled.stdout,
+            compiled.stderr,
+        )
+        install_runtime_support(self.helper_jar, checkout / metadata["dir.bin.classes"])
 
     def _metadata(self, checkout: Path) -> dict[str, Any]:
         names = [
