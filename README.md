@@ -74,7 +74,7 @@ The primary outputs are deliberately separated into CFG structure and path label
 | `graph.json` | The same complete CFG in machine-readable form. No node or edge is omitted. |
 | `paths.csv` | Every complete path and every associated path-test label record, including paths not reached by the selected tests. |
 | `report.md` | A concise human-readable summary, links to the complete CFG, and all paths labeled `true`, `false`, or `unknown`. Paths with no test evidence are intentionally hidden here. |
-| `experiment.json` | The full aggregate used to reproduce reports. It also contains configuration, summaries, coverage sets, diagnostics, and test records. |
+| `experiment.json` | The aggregate used to reproduce reports. It contains configuration, summaries, coverage sets, diagnostics, and compact test records. Each test record points to its full trace in `tests/*.json.gz` via `trace_artifact`. |
 
 Supporting files include `compile.log`, `graph.log`, `test-manifest.json`, `run-manifest.json`, `tests/*.json.gz`, `test-logs/*.log`, and, for the patched phase, `patch-application.json`. They exist for diagnostics and safe resume; the main experimental data is in the five primary outputs above.
 

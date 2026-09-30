@@ -137,7 +137,7 @@ def _whole_path_label(observation: str, test_outcome: str | None) -> str:
 def label_graph(
     graph: dict[str, Any],
     static_paths: list[dict[str, Any]],
-    tests: list[dict[str, Any]],
+    tests: Iterable[dict[str, Any]],
     *,
     discovery_incomplete: bool = False,
 ) -> dict[str, Any]:
@@ -145,18 +145,23 @@ def label_graph(
     graph_edges = {(edge["source"], edge["target"]) for edge in graph["edges"]}
     covered_nodes: set[str] = set()
     covered_edges: set[tuple[str, str]] = set()
-    observed_paths: list[dict[str, Any]] = []
-    incomplete_invocations: list[dict[str, Any]] = []
-    invocations_by_test: dict[str, list[dict[str, Any]]] = {}
+    observed_paths: dict[tuple[Any, ...], dict[str, Any]] = {}
+    method_tests: dict[str, list[tuple[str, str, set[str], set[str]]]] = {}
     evidence_issues: list[dict[str, str]] = []
-    if not tests:
-        evidence_issues.append({"test_id": "", "reason": "no_tests_selected"})
+    had_tests = False
     if discovery_incomplete:
         evidence_issues.append({"test_id": "", "reason": "test_discovery_incomplete"})
 
     for test in tests:
+        had_tests = True
         selector = test["test"]["selector"]
-        invocations: list[dict[str, Any]] = []
+        test_outcome = test.get(
+            "execution_status", "passed" if test["status"] == "true" else "failed"
+        )
+        # A single test can execute the same method path thousands of times.
+        # Path labeling needs presence, not invocation frequency.
+        complete_by_method: dict[str, set[str]] = {}
+        incomplete_by_method: dict[str, set[str]] = {}
         if not test.get("trace_files") and not test.get("traces"):
             evidence_issues.append({"test_id": selector, "reason": "no_trace_file"})
         if test.get("trace_truncated"):
@@ -170,40 +175,47 @@ def label_graph(
             trace_invocations = split_method_invocations(events, node_method, graph_edges)
             for item in trace_invocations:
                 if not item["complete"]:
-                    incomplete_invocations.append({
-                        **item,
-                        "test_id": selector,
-                        "test_outcome": test.get(
-                            "execution_status",
-                            "passed" if test["status"] == "true" else "failed",
-                        ),
-                    })
+                    incomplete_by_method.setdefault(item["method_id"], set()).add(
+                        "\0" + "\0".join(item["nodes"]) + "\0"
+                    )
                     evidence_issues.append({
                         "test_id": selector,
                         "method_id": item["method_id"],
                         "reason": "incomplete_invocation",
                     })
+                else:
+                    complete_by_method.setdefault(item["method_id"], set()).add(
+                        "\0" + "\0".join(item["nodes"]) + "\0"
+                    )
             covered_nodes.update(node for invocation in trace_invocations for node in invocation["nodes"])
             for invocation in trace_invocations:
                 nodes = invocation["nodes"]
                 covered_edges.update(
                     pair for pair in zip(nodes, nodes[1:]) if pair in graph_edges
                 )
-                observed_paths.append(
-                    {
+                observed = {
                         "id": _path_id(invocation["method_id"], nodes),
                         "method_id": invocation["method_id"],
                         "nodes": nodes,
                         "test_id": selector,
                         "complete": invocation["complete"],
                         "trace_truncated": bool(test.get("trace_truncated")),
-                        "test_outcome": test.get("execution_status", "passed" if test["status"] == "true" else "failed"),
+                        "test_outcome": test_outcome,
                         "trace_file": trace.get("file") if isinstance(trace, dict) else None,
                         "thread_id": trace.get("thread_id") if isinstance(trace, dict) else None,
                     }
-                )
-            invocations.extend(item for item in trace_invocations if item["complete"])
-        invocations_by_test[selector] = invocations
+                observed_paths[(observed["id"], selector, observed["complete"],
+                                observed["trace_truncated"], observed["trace_file"],
+                                observed["thread_id"])] = observed
+        for method in complete_by_method.keys() | incomplete_by_method.keys():
+            method_tests.setdefault(method, []).append((
+                selector, test_outcome,
+                complete_by_method.get(method, set()),
+                incomplete_by_method.get(method, set()),
+            ))
+
+    if not had_tests:
+        evidence_issues.append({"test_id": "", "reason": "no_tests_selected"})
 
     path_set = list(static_paths)
     existing_path_ids = {path["id"] for path in path_set}
@@ -214,51 +226,21 @@ def label_graph(
             "nodes": item["nodes"],
             "kind": "observed-entry-exit",
         }
-        for item in observed_paths
+        for item in observed_paths.values()
         if item["complete"] and item["id"] not in existing_path_ids
     }
     path_set.extend(
         sorted(observed_additions.values(), key=lambda item: (item["method_id"], item["id"]))
     )
 
-    # Most tests never enter a given modified method. Index their invocations
-    # once instead of scanning every test (and every incomplete invocation)
-    # for each static path.
-    incomplete_by_test_method: dict[tuple[str, str], list[dict[str, Any]]] = {}
-    partial_methods_by_selector: dict[str, set[str]] = {}
-    for invocation in incomplete_invocations:
-        key = (invocation["test_id"], invocation["method_id"])
-        incomplete_by_test_method.setdefault(key, []).append(invocation)
-        partial_methods_by_selector.setdefault(invocation["test_id"], set()).add(invocation["method_id"])
-    method_tests: dict[str, list[tuple[dict[str, Any], list[dict[str, Any]], list[dict[str, Any]]]]] = {}
-    for test in tests:
-        selector = test["test"]["selector"]
-        complete_by_method: dict[str, list[dict[str, Any]]] = {}
-        for invocation in invocations_by_test[selector]:
-            complete_by_method.setdefault(invocation["method_id"], []).append(invocation)
-        methods = set(complete_by_method)
-        methods.update(partial_methods_by_selector.get(selector, set()))
-        for method in methods:
-            method_tests.setdefault(method, []).append((
-                test,
-                complete_by_method.get(method, []),
-                incomplete_by_test_method.get((selector, method), []),
-            ))
-
     labels: list[dict[str, Any]] = []
     for path in path_set:
+        path_sequence = "\0" + "\0".join(path["nodes"]) + "\0"
         path_has_label = False
-        for test, complete_invocations, partial_invocations in method_tests.get(path["method_id"], []):
-            selector = test["test"]["selector"]
-            covered = any(
-                _is_contiguous_subpath(path["nodes"], invocation["nodes"])
-                for invocation in complete_invocations
-            )
+        for selector, test_outcome, complete_invocations, partial_invocations in method_tests.get(path["method_id"], []):
+            covered = any(path_sequence in invocation for invocation in complete_invocations)
             if covered:
                 path_has_label = True
-                test_outcome = test.get(
-                    "execution_status", "passed" if test["status"] == "true" else "failed"
-                )
                 labels.append(
                     {
                         "path_id": path["id"],
@@ -270,15 +252,10 @@ def label_graph(
                 )
                 continue
             affected_by_incomplete_invocation = any(
-                _is_contiguous_subpath(invocation["nodes"], path["nodes"])
-                for invocation in partial_invocations
+                invocation in path_sequence for invocation in partial_invocations
             )
             if affected_by_incomplete_invocation:
                 path_has_label = True
-                test_outcome = test.get(
-                    "execution_status",
-                    "passed" if test["status"] == "true" else "failed",
-                )
                 labels.append({
                     "path_id": path["id"],
                     "observation": "incomplete",
@@ -295,12 +272,6 @@ def label_graph(
                 "label": "untested",
             })
 
-    deduplicated_observed = list(
-        {
-            (item["id"], item["test_id"], item["complete"], item["trace_truncated"], item["trace_file"], item["thread_id"]): item
-            for item in observed_paths
-        }.values()
-    )
     nonvirtual_nodes = {
         node["id"] for node in graph["nodes"] if not node.get("virtual")
     }
@@ -308,7 +279,7 @@ def label_graph(
         "path_set": path_set,
         "labels": labels,
         "observed_paths": sorted(
-            deduplicated_observed,
+            observed_paths.values(),
             key=lambda item: (item["test_id"], item["method_id"], item["id"]),
         ),
         "evidence_issues": sorted(

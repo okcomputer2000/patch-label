@@ -1,6 +1,25 @@
 from patch_label.graph import enumerate_static_paths, label_graph, split_method_invocations
 
 
+def test_label_graph_accepts_one_shot_test_iterator():
+    graph = {
+        "nodes": [
+            {"id": "m:ENTRY", "method_id": "m"},
+            {"id": "m:EXIT", "method_id": "m"},
+        ],
+        "edges": [{"source": "m:ENTRY", "target": "m:EXIT"}],
+    }
+    paths, _ = enumerate_static_paths(graph, max_loop_visits=1, max_paths_per_method=10)
+    test = {
+        "test": {"selector": "Example::test"},
+        "status": "true",
+        "execution_status": "passed",
+        "traces": [{"nodes": ["m:ENTRY", "m:EXIT"], "file": "trace.json"}],
+        "trace_files": ["trace.json"],
+    }
+    assert label_graph(graph, paths, iter([test])) == label_graph(graph, paths, [test])
+
+
 METHOD = "sample.Branchy#classify(I)I"
 
 

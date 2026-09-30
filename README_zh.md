@@ -62,7 +62,7 @@ results/<dataset-version>/<Project-ID>/<buggy|patched>/runs/<run-fingerprint>/
 | `graph.json` | 同一张完整 CFG 的机器可读形式，不省略任何节点或边。 |
 | `paths.csv` | 全部完整路径及其逐测试标签记录，也包含没有被选中测试覆盖的路径。 |
 | `report.md` | 简明的人类可读摘要、完整 CFG 文件入口，以及全部 `true`、`false`、`unknown` 路径；不会列出无测试证据的路径。 |
-| `experiment.json` | 用于重新生成报告的完整聚合数据，还包含配置、摘要、覆盖集合、诊断信息和测试记录。 |
+| `experiment.json` | 用于重新生成报告的聚合数据，包含配置、摘要、覆盖集合、诊断信息和简要测试记录。每条记录通过 `trace_artifact` 指向 `tests/*.json.gz` 中的完整轨迹。 |
 
 辅助文件包括 `compile.log`、`graph.log`、`test-manifest.json`、`run-manifest.json`、`tests/*.json.gz`、`test-logs/*.log`，以及 patched 阶段的 `patch-application.json`。它们用于诊断和安全续跑；主要实验结果集中在上面的五个输出文件中。
 

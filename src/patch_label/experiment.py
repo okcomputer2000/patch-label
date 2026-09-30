@@ -282,7 +282,11 @@ class ExperimentRunner:
                             self._restore_after_timeout(
                                 example, phase, checkout, metadata, output_dir, test, 2
                             )
-                    test_results.append(result)
+                    trace_artifact = f"tests/{_safe_name(test.selector)}.json.gz"
+                    test_results.append({
+                        key: value for key, value in result.items() if key != "traces"
+                    } | {"trace_artifact": trace_artifact})
+                    del result
                     consecutive_errors = consecutive_errors + 1 if execution_status == "error" else 0
                     if consecutive_errors >= 3:
                         raise ExperimentError(
@@ -297,7 +301,12 @@ class ExperimentRunner:
             max_loop_visits=self.config.max_loop_visits,
             max_paths_per_method=self.config.max_paths_per_method,
         )
-        labels = label_graph(graph, static_paths, test_results, discovery_incomplete=bool(discovery_errors))
+        labels = label_graph(
+            graph, static_paths,
+            (read_json_gz(output_dir / "tests" / f"{_safe_name(test.selector)}.json.gz")
+             for test in tests),
+            discovery_incomplete=bool(discovery_errors),
+        )
         document = {
             "schema_version": "2.0",
             "run_fingerprint": fingerprint,
