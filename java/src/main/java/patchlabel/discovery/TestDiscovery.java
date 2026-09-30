@@ -10,6 +10,7 @@ import java.nio.file.Paths;
 import java.util.Set;
 import java.util.TreeSet;
 import junit.framework.TestCase;
+import org.junit.Ignore;
 import org.junit.runner.Description;
 import org.junit.runner.Request;
 import org.junit.runner.Runner;
@@ -33,6 +34,10 @@ public final class TestDiscovery {
                 }
                 try {
                     Class<?> testClass = Class.forName(className, false, loader);
+                    if (testClass.isAnnotationPresent(Ignore.class)) {
+                        System.out.println("SKIP\t" + clean(className) + "\tJUnit @Ignore");
+                        continue;
+                    }
                     Runner runner = Request.aClass(testClass).getRunner();
                     boolean ownMethods = emit(runner.getDescription(), className);
                     // Some old JUnit 3 suite() methods return a different class's suite.
@@ -57,7 +62,7 @@ public final class TestDiscovery {
             if (methodName == null || methodName.isEmpty()) {
                 methodName = inferMethod(description.getDisplayName());
             }
-            if (methodName != null && !methodName.isEmpty()) {
+            if (methodName != null && isJavaIdentifier(methodName)) {
                 System.out.println(
                         "TEST\t" + clean(className) + "\t" + clean(methodName) + "\t" + clean(description.getDisplayName()));
                 return className.equals(fallbackClassName);
@@ -92,6 +97,22 @@ public final class TestDiscovery {
     private static String inferMethod(String displayName) {
         int opening = displayName.indexOf('(');
         return opening > 0 ? displayName.substring(0, opening) : displayName;
+    }
+
+    private static boolean isJavaIdentifier(String name) {
+        if (name.isEmpty() || !Character.isJavaIdentifierStart(name.charAt(0))) {
+            return false;
+        }
+        for (int index = 1; index < name.length(); index++) {
+            char value = name.charAt(index);
+            if (value == '[') {
+                return name.endsWith("]"); // parameterized JUnit display name
+            }
+            if (!Character.isJavaIdentifierPart(value)) {
+                return false;
+            }
+        }
+        return true;
     }
 
     private static String clean(String value) {

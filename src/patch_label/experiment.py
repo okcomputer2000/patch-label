@@ -214,7 +214,7 @@ class ExperimentRunner:
         compile_result = self.d4j.compile(checkout, timeout=self.config.compile_timeout)
         _write_log(output_dir / "compile.log", compile_result.stdout, compile_result.stderr)
         graph = self._build_graph(checkout, metadata, output_dir)
-        tests, discovery_errors = self._discover_tests(checkout, metadata)
+        tests, discovery_errors, discovery_skips = self._discover_tests(checkout, metadata)
         if self.config.max_tests is not None:
             tests = tests[: self.config.max_tests]
         write_json(
@@ -224,6 +224,7 @@ class ExperimentRunner:
                 "count": len(tests),
                 "tests": [test.to_dict() for test in tests],
                 "discovery_errors": discovery_errors,
+                "discovery_skips": discovery_skips,
             },
         )
 
@@ -327,6 +328,7 @@ class ExperimentRunner:
             "path_enumeration_truncations": truncations,
             "tests": test_results,
             "test_discovery_errors": discovery_errors,
+            "test_discovery_skips": discovery_skips,
             "artifacts": {
                 "human_report": "report.md",
                 "complete_cfg_dot": "cfg.dot",
@@ -458,7 +460,7 @@ class ExperimentRunner:
 
     def _discover_tests(
         self, checkout: Path, metadata: dict[str, Any]
-    ) -> tuple[list[TestCase], list[dict[str, str]]]:
+    ) -> tuple[list[TestCase], list[dict[str, str]], list[dict[str, str]]]:
         property_name = {
             "all": "tests.all",
             "relevant": "tests.relevant",
@@ -477,7 +479,7 @@ class ExperimentRunner:
                         granularity="method" if separator else "class",
                     )
                 )
-            return sorted(tests, key=lambda test: test.selector), []
+            return sorted(tests, key=lambda test: test.selector), [], []
         return discover_test_cases(
             self.helper_jar,
             checkout,

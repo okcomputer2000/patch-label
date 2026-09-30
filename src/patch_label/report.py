@@ -177,6 +177,7 @@ def render_markdown(document: dict[str, Any], rows: list[dict[str, str]]) -> str
                 ["Test scope", document["configuration"]["test_scope"]],
                 ["Evidence", "INCOMPLETE" if issues else "COMPLETE"],
                 ["Tests", summary["test_count"]],
+                ["Ignored test classes", len(document.get("test_discovery_skips", []))],
                 ["CFG", f"{summary['node_count']} nodes / {summary['edge_count']} edges"],
                 ["Labeled complete paths", len(labeled_paths)],
                 [
@@ -186,6 +187,12 @@ def render_markdown(document: dict[str, Any], rows: list[dict[str, str]]) -> str
             ],
         ),
         "",
+        *(
+            ["Ignored test classes: " + ", ".join(
+                item["class_name"] for item in document["test_discovery_skips"]
+            ), ""]
+            if document.get("test_discovery_skips") else []
+        ),
         "## Complete CFG",
         "",
         "The complete CFG is available in two equivalent forms:",

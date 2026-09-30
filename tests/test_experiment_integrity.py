@@ -97,7 +97,7 @@ def test_new_run_preserves_legacy_result(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setattr(runner, "_run_fingerprint", lambda *args: "a" * 64)
     monkeypatch.setattr(runner, "_metadata", lambda *args: {"classes.modified": []})
     monkeypatch.setattr(runner, "_build_graph", lambda *args: {"nodes": [], "edges": []})
-    monkeypatch.setattr(runner, "_discover_tests", lambda *args: ([], []))
+    monkeypatch.setattr(runner, "_discover_tests", lambda *args: ([], [], []))
     example = Example("D4JV2.0", "Compress", 44, tmp_path, tmp_path / "patch")
     legacy = config.output_dir / "D4JV2.0" / "Compress-44" / "buggy" / "experiment.json"
     legacy.parent.mkdir(parents=True)
