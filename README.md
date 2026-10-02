@@ -40,23 +40,31 @@ not evaluated for that label.
 
 | Test | `confirmed` evidence |
 | --- | --- |
-| `root_cause_not_fixed` | The same false path remains after patching, or a new patch branch still has a satisfiable false-path witness with the same path context outside the patch. |
-| `boundary_incomplete` | An original `false` path reaches a changed patch unit, and the solver finds a model for the symmetric difference `(C_old AND NOT C_new) OR (NOT C_old AND C_new)`. `C_old` and `C_new` contain only abstract CFG branch identities and edge polarities; they intentionally do not encode concrete Java values. |
+| `root_cause_not_fixed` | The same `false` path remains after patching, or the patch creates a new branch and the old false-path context still has an exactly modeled, satisfiable patched path. |
+| `boundary_incomplete` | An original `false` path reaches a changed patch unit, and Z3 solves both directions of `(C_old AND NOT C_new) OR (NOT C_old AND C_new)`. A satisfiable difference is only a changed input region, not by itself a defect. Confirmation additionally requires cross-phase test evidence for v1 (the same test changes from `true` to `false`) or v2 (the same test remains `false` on the corresponding changed path). Exact Java-AST predicates are required; a changed boundary without this semantic failure witness is `inconclusive`. |
 | `overrepair` | The patch has at least two units. First, a unit absent from every original `false` path immediately confirms the label. Otherwise, each unit is reverted alone from a fresh all-units-applied state: an unreachable rollback is skipped; a reachable rollback confirms the label only when its symbolic output is equivalent to the full patch output. |
 
-Each test stops as soon as it obtains decisive evidence. `not_confirmed` means the criterion was not established. `inconclusive` is used when proving the criterion requires symbolic output equivalence that the recorded CFG does not contain; it is never silently converted into a positive label. Results and evidence are written to `patch-label-analysis.json`, with a concise table in `patch-label-analysis.md`.
+Each test stops as soon as it obtains decisive evidence. `not_confirmed` means the criterion was not established. `inconclusive` is used when the solver finds a candidate but the recorded paths lack the semantic failure or symbolic-output evidence required for confirmation; it is never silently converted into a positive label. Results and evidence are written to `patch-label-analysis.json`, with a concise table in `patch-label-analysis.md`.
 
 Existing results use the schema 2.0 CFG, which stores nodes, edges, source
-locations, and edge kinds. The analyzer assigns each branching CFG node an
-abstract identity and each selected outgoing edge a polarity (`true`, `false`,
-`case:<index>`, or `default`). It conjoins those abstract choices over the
-complete path. No concrete Java input value is inferred, so this analysis does
-not claim to solve for `x = 5` or `x = null`. It does not rerun or modify the
-existing experiment data. Missing symbolic output information remains
-`inconclusive`, never a positive label. Each confirmed result contains
-`stopped_after` and an `evidence` object with path IDs, patch-unit IDs, the
-solver formula, satisfiability status, model, and (for overrepair) every
-rollback attempt made before confirmation.
+locations, and edge kinds. Tree-sitter maps branch nodes to Java AST conditions
+from the matching worktrees. For example, `if (a < 5)` becomes a Z3 integer
+constraint and `flag && a < 5` preserves both Boolean and arithmetic semantics.
+If the exact patched worktree is absent, the analyzer reuses another checkout
+of the same example and reconstructs patched source files in a temporary
+directory; no Defects4J test is rerun. Unsupported expressions remain explicit
+in `unsupported_expressions`, and an abstract-only witness cannot confirm a
+label. Patch-output comparison also uses Java AST nodes rather than regular
+expressions. Each result records `status`, `stopped_after`, path and patch-unit
+IDs, source predicates, precision, SMT formula, solver model, and rollback
+attempts.
+
+This intentionally adopts the layered approach used by established Java
+analysis projects: source AST extraction is separate from CFG/path analysis and
+constraint solving. It keeps the existing ASM CFG pipeline and adds only the
+small Tree-sitter grammar instead of embedding [CodeQL](https://github.com/github/codeql),
+[SootUp](https://github.com/soot-oss/SootUp), or
+[Spoon](https://github.com/INRIA/spoon) and their substantially larger runtimes.
 
 ### Result directory
 
@@ -133,7 +141,8 @@ The project intentionally keeps its dependency set small:
 | Dependency | Purpose |
 | --- | --- |
 | Python `>=3.11` | Runs the experiment coordinator, report generator, and static patch analyzer. |
-| `z3-solver` | Checks satisfiability of abstract CFG branch-choice formulas and structural witness constraints. |
+| `tree-sitter` and `tree-sitter-java` | Parse Java conditions and output statements into syntax trees without regular-expression parsing. |
+| `z3-solver` | Checks satisfiability of recovered source-level branch constraints, with abstract CFG fallback. |
 | `uv` | Creates the virtual environment, installs the project, locks dependencies, and runs every Python command. |
 | Defects4J v1.2.0 and v2.0.0 | Check out the matching dataset version, export metadata, compile projects, and run tests. Keep both clones inside `tools/`. |
 | Java 7, 8, and 11+ JDKs | Java 7/8 run the corresponding Defects4J projects; JDK 11+ compiles the Java helper. |
@@ -142,7 +151,7 @@ The project intentionally keeps its dependency set small:
 | JUnit 4.13.2 | Discovers JUnit 3/4 leaf tests for the helper. Test execution remains under Defects4J. |
 | `pytest` | Development-only test dependency installed by `uv sync --dev`. |
 
-The analyzer adds only `z3-solver`; the experiment runner otherwise uses the Python standard library. Generating `cfg.dot` adds no dependency.
+The static analyzer adds Tree-sitter's Java grammar and `z3-solver`; the experiment runner otherwise uses the Python standard library. Generating `cfg.dot` adds no dependency.
 
 ## Running
 
@@ -296,4 +305,4 @@ uv run patch-label analyze-patches \
 | --- | --- | --- |
 | `--analysis-output FILE` | `results/patch-label-analysis.json` | JSON output containing one result and evidence object per patch package. A Markdown summary is written beside it. |
 
-The command stops each of the three independent tests after decisive evidence is found. It never changes an existing experiment result.
+The command uses `--state-dir` to locate retained source worktrees. If an exact fingerprint is unavailable, it may use another checkout of the same example and reconstruct only the modified patched source files in a temporary directory. It stops each independent test after decisive evidence is found and never changes an existing experiment result.

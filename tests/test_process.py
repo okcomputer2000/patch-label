@@ -33,7 +33,11 @@ def test_timeout_kills_descendant_process(tmp_path: Path) -> None:
     pid = int(pid_file.read_text(encoding="utf-8"))
     for _ in range(20):
         status = Path(f"/proc/{pid}/stat")
-        if not status.exists() or status.read_text().split()[2] == "Z":
+        try:
+            process_state = status.read_text().split()[2]
+        except FileNotFoundError:
+            break
+        if process_state == "Z":
             break
         time.sleep(0.05)
     else:

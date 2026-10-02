@@ -200,6 +200,11 @@ class ExperimentRunner:
         output_dir.mkdir(parents=True, exist_ok=True)
         write_json(manifest_file, {"schema_version": "2.0", "run_fingerprint": fingerprint})
         metadata = self._metadata(checkout)
+        metadata["patch_label.checkout"] = str(checkout.resolve())
+        if metadata.get("dir.src.classes"):
+            metadata["patch_label.source_root"] = str(
+                (checkout / metadata["dir.src.classes"]).resolve()
+            )
 
         patch_manifest: dict[str, Any] | None = None
         if phase == "patched":

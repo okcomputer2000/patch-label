@@ -38,13 +38,15 @@ uv run patch-label analyze-patches \
 
 | 测试 | `confirmed` 的证据 |
 | --- | --- |
-| `root_cause_not_fixed` | 打补丁后仍存在同一条 `false` 路径，或者补丁新建分支后仍存在上下文相同且可满足的 `false` 路径。 |
-| `boundary_incomplete` | 原来的 `false` 路径经过被修改的补丁块，并且求解器能为对称差 `(C_old AND NOT C_new) OR (NOT C_old AND C_new)` 找到模型。`C_old` 与 `C_new` 只包含抽象 CFG 分支身份和边极性，不编码具体 Java 输入值。 |
+| `root_cause_not_fixed` | 打补丁后仍存在同一条 `false` 路径，或者补丁新建分支后，原 false 路径的上下文仍对应一条被精确建模且可满足的 patched 路径。 |
+| `boundary_incomplete` | 原来的 `false` 路径经过被修改的补丁块，Z3 分别求解 `(C_old AND NOT C_new) OR (NOT C_old AND C_new)` 的两个方向。公式可满足只说明输入区域发生变化，本身不能证明补丁有缺陷；还必须有跨阶段测试语义证据：v1 为同一测试从 `true` 变成 `false`，v2 为同一测试在对应的变化路径上仍为 `false`。变化谓词必须能从 Java AST 精确转换；只有边界差异而没有失败语义见证时为 `inconclusive`。 |
 | `overrepair` | 补丁至少有两个修改块。先检查某块是否不在任何原 `false` 路径上；若是，立即确认。否则从“全部补丁块均已应用”的新状态出发，每次只还原一个块：不可达的还原变体跳过；可达且其符号化输出与完整补丁输出等价时确认。 |
 
-每个测试一旦得到决定性证据就立即停止。`not_confirmed` 表示没有建立对应标准；如果必须进行符号化输出等价性证明，而现有 CFG 不包含足够信息，则标为 `inconclusive`，不会静默当成阳性标签。结果和证据写入 `patch-label-analysis.json`，同时生成简明表格 `patch-label-analysis.md`。
+每个测试一旦得到决定性证据就立即停止。`not_confirmed` 表示没有建立对应标准；如果求解器找到了候选区域，但现有路径缺少确认所需的失败语义或符号化输出证据，则标为 `inconclusive`，不会静默当成阳性标签。结果和证据写入 `patch-label-analysis.json`，同时生成简明表格 `patch-label-analysis.md`。
 
-现有结果使用 schema 2.0 CFG，其中保存节点、边、源码位置和边类型。分析器为每个有多个出口的 CFG 节点分配抽象身份，并为路径选择的出口分配极性（`true`、`false`、`case:<index>` 或 `default`），再沿完整路径合取这些抽象选择。这个分析不会推导具体 Java 输入值，因此不会声称求出了 `x = 5` 或 `x = null`。它不会重新运行实验，也不会修改现有实验数据。缺少符号化输出信息时保持 `inconclusive`，绝不当成阳性标签。每个确认结果都包含 `stopped_after` 和 `evidence`：其中保存路径 ID、补丁块编号、求解公式、可满足性、模型，以及确认前执行过的全部单块还原尝试（多余修复）。
+现有结果使用 schema 2.0 CFG，其中保存节点、边、源码位置和边类型。Tree-sitter 会把 CFG 分支节点映射到工作树里的 Java AST 条件。例如 `if (a < 5)` 会转换为 Z3 整数约束，`flag && a < 5` 会同时保留布尔和算术语义。精确指纹对应的 patched 工作树不存在时，分析器会复用同一样例的其他 checkout，并在临时目录中重建被修改的 patched 源文件，不会重跑 Defects4J 测试。无法支持的表达式会明确写入 `unsupported_expressions`；只有抽象见证时绝不会确认标签。补丁输出比较也使用 Java AST 节点，不使用正则表达式。每个结果保存 `status`、`stopped_after`、路径和补丁块 ID、源码谓词、精度、SMT 公式、求解模型，以及逐块还原尝试。
+
+该设计借鉴成熟 Java 静态分析项目的分层方式：源码 AST 提取、CFG/路径分析和约束求解彼此分离。项目保留现有 ASM CFG 流程，只增加轻量的 Tree-sitter Java grammar，没有把 [CodeQL](https://github.com/github/codeql)、[SootUp](https://github.com/soot-oss/SootUp) 或 [Spoon](https://github.com/INRIA/spoon) 的大型运行时嵌入实验。
 
 ### 结果目录
 
@@ -121,7 +123,8 @@ results/<dataset-version>/<Project-ID>/<buggy|patched>/runs/<run-fingerprint>/
 | 依赖 | 用途 |
 | --- | --- |
 | Python `>=3.11` | 运行实验协调器、报告生成器和补丁静态分析器。 |
-| `z3-solver` | 验证抽象 CFG 分支选择公式和结构路径见证是否可满足。 |
+| `tree-sitter` 与 `tree-sitter-java` | 将 Java 条件和输出语句解析为语法树，避免用正则表达式解析 Java。 |
+| `z3-solver` | 验证恢复出的源码级分支约束；无法恢复时使用抽象 CFG 回退。 |
 | `uv` | 创建虚拟环境、安装项目、锁定依赖，并执行所有 Python 命令。 |
 | Defects4J v1.2.0 与 v2.0.0 | 按输入套件版本 checkout、导出元数据、编译并运行测试。两个克隆均放在 `tools/` 中。 |
 | Java 7、8 和 11+ JDK | Java 7/8 分别运行对应版本的 Defects4J 项目；JDK 11+ 编译 Java helper。 |
@@ -130,7 +133,7 @@ results/<dataset-version>/<Project-ID>/<buggy|patched>/runs/<run-fingerprint>/
 | JUnit 4.13.2 | 为 helper 发现 JUnit 3/4 叶子测试；实际测试执行仍由 Defects4J 完成。 |
 | `pytest` | 仅开发测试使用，由 `uv sync --dev` 安装。 |
 
-分析器额外使用 `z3-solver`；实验执行器其余部分仍只使用 Python 标准库。生成 `cfg.dot` 不会增加依赖。
+静态分析器额外使用 Tree-sitter Java grammar 和 `z3-solver`；实验执行器其余部分仍只使用 Python 标准库。生成 `cfg.dot` 不会增加依赖。
 
 ## 启动运行
 
@@ -282,4 +285,4 @@ uv run patch-label analyze-patches \
 | --- | --- | --- |
 | `--analysis-output FILE` | `results/patch-label-analysis.json` | 写入每个补丁包的三个测试结果和证据；同时在旁边生成 Markdown 汇总。 |
 
-三个独立测试分别在得到决定性证据后立即停止。该命令不会修改已有实验结果。
+该命令通过 `--state-dir` 查找保留的源码工作树。精确运行指纹不存在时，可以复用同一样例的其他 checkout，并只在临时目录中重建被修改的 patched 源文件。三个独立测试分别在得到决定性证据后立即停止；命令不会修改已有实验结果。
