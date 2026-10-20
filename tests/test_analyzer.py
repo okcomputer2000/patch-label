@@ -2,6 +2,7 @@ import json
 from pathlib import Path
 
 from patch_label.analyzer import (
+    _document_source_root,
     _path_constraint,
     _path_is_sat,
     analyze_pair,
@@ -28,6 +29,19 @@ def _document(label: str, *, changed: bool = False) -> dict:
         "path_set": [path],
         "labels": [{"path_id": path["id"], "label": label}],
     }
+
+
+def test_document_source_root_prefers_current_analysis_checkout(tmp_path: Path) -> None:
+    current_root = tmp_path / "current" / "source"
+    current_root.mkdir(parents=True)
+    document = {
+        "_analysis_source_root": str(current_root),
+        "metadata": {
+            "patch_label.source_root": "/root/old-machine/source",
+        },
+    }
+
+    assert _document_source_root(document) == current_root
 
 
 def test_analyze_pair_confirms_same_false_path_and_keeps_evidence(tmp_path: Path) -> None:

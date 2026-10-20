@@ -217,7 +217,7 @@ def _path_touches_unit(
 
 def _document_source_root(document: dict[str, Any]) -> Path | None:
     metadata = document.get("metadata", {})
-    recorded_root = metadata.get("patch_label.source_root") or document.get("_analysis_source_root")
+    recorded_root = document.get("_analysis_source_root") or metadata.get("patch_label.source_root")
     if recorded_root:
         root = Path(str(recorded_root))
         if root.is_dir():
