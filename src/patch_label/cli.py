@@ -95,7 +95,7 @@ def build_parser() -> argparse.ArgumentParser:
     _common_paths(run)
     run.add_argument("--example", action="append", default=[], help="Project-ID or VERSION/Project-ID")
     run.add_argument("--phase", choices=("buggy", "patched", "both"), default="both")
-    run.add_argument("--test-scope", choices=("all", "relevant", "trigger"), default="all")
+    run.add_argument("--test-scope", choices=("auto", "all", "relevant", "trigger"), default="auto")
     run.add_argument("--max-tests", type=int)
     run.add_argument("--compile-timeout", type=float, default=1800)
     run.add_argument("--test-timeout", type=float, default=600)

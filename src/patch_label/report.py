@@ -175,6 +175,11 @@ def render_markdown(document: dict[str, Any], rows: list[dict[str, str]]) -> str
                 ["Example", f"{example['dataset_version']}/{example['key']}"],
                 ["Phase", document["phase"]],
                 ["Test scope", document["configuration"]["test_scope"]],
+                *([
+                    ["Requested test scope", document["configuration"].get("requested_test_scope", "all")],
+                    ["Control-flow decision", document["test_selection"]["status"]],
+                    ["Test selection reason", document["test_selection"]["reason"]],
+                ] if document.get("test_selection") else []),
                 ["Evidence", "INCOMPLETE" if issues else "COMPLETE"],
                 ["Tests", summary["test_count"]],
                 ["Ignored test classes", len(document.get("test_discovery_skips", []))],

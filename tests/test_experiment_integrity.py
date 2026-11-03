@@ -120,7 +120,8 @@ def test_run_fingerprint_changes_with_config_patch_and_source(tmp_path: Path, mo
 
 
 def test_new_run_preserves_legacy_result(tmp_path: Path, monkeypatch) -> None:
-    config = ExperimentConfig(tmp_path, tmp_path, tmp_path, tmp_path / "state", tmp_path / "results")
+    config = ExperimentConfig(tmp_path, tmp_path, tmp_path, tmp_path / "state", tmp_path / "results",
+                              test_scope="all")
     runner = object.__new__(ExperimentRunner)
     runner.config = config
     helper = tmp_path / "helper.jar"

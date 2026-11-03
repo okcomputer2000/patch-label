@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 from .defects4j import Defects4J, split_classpath, split_exported_list
+from .control_flow import POLICY_VERSION, assess_control_flow
 from .graph import enumerate_static_paths, label_graph
 from .io import read_json, read_json_gz, write_json, write_json_gz
 from .java_helper import build_bootstrap_support, build_helper, install_runtime_support
@@ -28,7 +29,7 @@ class ExperimentConfig:
     defects4j_dir: Path
     state_dir: Path
     output_dir: Path
-    test_scope: Literal["all", "relevant", "trigger"] = "all"
+    test_scope: Literal["auto", "all", "relevant", "trigger"] = "auto"
     max_tests: int | None = None
     compile_timeout: float = 1800
     test_timeout: float = 600
@@ -162,6 +163,7 @@ class ExperimentRunner:
             "java_home": str(self.d4j.java_home),
             "java_version": java_version,
             "test_scope": self.config.test_scope,
+            "test_selection_policy": POLICY_VERSION,
             "max_tests": self.config.max_tests,
             "compile_timeout": self.config.compile_timeout,
             "test_timeout": self.config.test_timeout,
@@ -220,6 +222,10 @@ class ExperimentRunner:
                 (checkout / metadata["dir.src.classes"]).resolve()
             )
 
+        selection = self._select_test_scope(example, checkout, metadata, output_dir)
+        metadata["patch_label.test_scope"] = selection["effective_scope"]
+        write_json(output_dir / "control-flow-decision.json", selection)
+
         patch_manifest: dict[str, Any] | None = None
         if phase == "patched":
             candidates = class_source_candidates(
@@ -239,7 +245,9 @@ class ExperimentRunner:
         write_json(
             output_dir / "test-manifest.json",
             {
-                "scope": self.config.test_scope,
+                "scope": selection["effective_scope"],
+                "requested_scope": self.config.test_scope,
+                "selection": selection,
                 "count": len(tests),
                 "tests": [test.to_dict() for test in tests],
                 "discovery_errors": discovery_errors,
@@ -335,12 +343,14 @@ class ExperimentRunner:
             "phase": phase,
             "defects4j_tag": self.config.expected_defects4j_tag,
             "configuration": {
-                "test_scope": self.config.test_scope,
+                "test_scope": selection["effective_scope"],
+                "requested_test_scope": self.config.test_scope,
                 "max_tests": self.config.max_tests,
                 "max_loop_visits": self.config.max_loop_visits,
                 "max_paths_per_method": self.config.max_paths_per_method,
             },
             "metadata": metadata,
+            "test_selection": selection,
             "patch_application": patch_manifest,
             "graph": graph,
             **labels,
@@ -413,6 +423,74 @@ class ExperimentRunner:
         )
         install_runtime_support(self.helper_jar, checkout / metadata["dir.bin.classes"])
 
+    def _select_test_scope(
+        self, example: Example, checkout: Path, metadata: dict[str, Any], output_dir: Path,
+    ) -> dict[str, Any]:
+        if self.config.test_scope != "auto":
+            return {"policy": POLICY_VERSION, "status": "explicit_override",
+                    "effective_scope": self.config.test_scope,
+                    "reason": "explicit_test_scope"}
+        cache = getattr(self, "_control_flow_cache", {})
+        cache_key = (example.dataset_version, example.key, example.patch_file.read_bytes())
+        if cache_key in cache:
+            return dict(cache[cache_key])
+        sources = class_source_candidates(
+            checkout, metadata["dir.src.classes"], metadata["classes.modified"]
+        )
+        originals = {source: source.read_bytes() for source in sources}
+        comparison_dir = output_dir / "control-flow-comparison"
+        comparison_dir.mkdir(parents=True, exist_ok=True)
+        decision: dict[str, Any]
+        try:
+            baseline_dir = comparison_dir / "buggy"
+            baseline_dir.mkdir(exist_ok=True)
+            self._clean_comparison_binaries(checkout, metadata)
+            compiled = self.d4j.compile(checkout, timeout=self.config.compile_timeout)
+            _write_log(baseline_dir / "compile.log", compiled.stdout, compiled.stderr)
+            before_graph = self._build_graph(checkout, metadata, baseline_dir)
+            before_sources = {source.relative_to(checkout).as_posix(): value
+                              for source, value in originals.items()}
+            application = apply_context_patch(example.patch_file, sources)
+            write_json(comparison_dir / "patch-application.json", application)
+            patched_dir = comparison_dir / "patched"
+            patched_dir.mkdir(exist_ok=True)
+            self._clean_comparison_binaries(checkout, metadata)
+            compiled = self.d4j.compile(checkout, timeout=self.config.compile_timeout)
+            _write_log(patched_dir / "compile.log", compiled.stdout, compiled.stderr)
+            after_graph = self._build_graph(checkout, metadata, patched_dir)
+            after_sources = {source.relative_to(checkout).as_posix(): source.read_bytes()
+                             for source in originals}
+            decision = assess_control_flow(before_sources, after_sources, before_graph, after_graph)
+        except (RuntimeError, OSError, ValueError) as error:
+            decision = {"policy": POLICY_VERSION, "status": "unknown",
+                        "effective_scope": "all", "reason": "preflight_failed",
+                        "error": str(error)}
+            if isinstance(error, CommandError):
+                _write_log(comparison_dir / "failure.log", error.result.stdout, error.result.stderr)
+        finally:
+            for source, content in originals.items():
+                source.write_bytes(content)
+            self._clean_comparison_binaries(checkout, metadata)
+        if decision["effective_scope"] == "relevant" and not metadata.get("tests.relevant"):
+            decision = decision | {"effective_scope": "all", "reason": "empty_defects4j_relevant_tests"}
+        decision["relevant_test_source"] = "defects4j export -p tests.relevant"
+        decision["relevant_test_classes"] = metadata.get("tests.relevant", [])
+        cache[cache_key] = decision
+        self._control_flow_cache = cache
+        return dict(decision)
+
+    @staticmethod
+    def _clean_comparison_binaries(checkout: Path, metadata: dict[str, Any]) -> None:
+        for property_name in ("dir.bin.classes", "dir.bin.tests"):
+            binary_dir = (checkout / metadata[property_name]).resolve()
+            if binary_dir == checkout.resolve() or not binary_dir.is_relative_to(checkout.resolve()):
+                raise ExperimentError(f"Unsafe compiled directory for control-flow comparison: {binary_dir}")
+            source_dir = (checkout / metadata["dir.src.classes"]).resolve()
+            if source_dir.is_relative_to(binary_dir):
+                raise ExperimentError(f"Compiled directory contains sources: {binary_dir}")
+            if binary_dir.exists():
+                shutil.rmtree(binary_dir)
+
     def _metadata(self, checkout: Path) -> dict[str, Any]:
         names = [
             "classes.modified",
@@ -484,7 +562,7 @@ class ExperimentRunner:
             "all": "tests.all",
             "relevant": "tests.relevant",
             "trigger": "tests.trigger",
-        }[self.config.test_scope]
+        }[metadata.get("patch_label.test_scope", self.config.test_scope)]
         if property_name == "tests.trigger":
             tests: list[TestCase] = []
             for selector in metadata[property_name]:

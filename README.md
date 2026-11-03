@@ -254,7 +254,7 @@ Builds the ASM/JUnit helper and Java agent. A matching cached JAR is reused by d
 uv run patch-label run \
   [--example SELECTOR ...] \
   [--phase buggy|patched|both] \
-  [--test-scope all|relevant|trigger] \
+  [--test-scope auto|all|relevant|trigger] \
   [--max-tests N] \
   [--compile-timeout SECONDS] \
   [--test-timeout SECONDS] \
@@ -270,7 +270,7 @@ uv run patch-label run \
 | --- | --- | --- |
 | `--example SELECTOR` | All examples | Selects one example. Repeat the option to select several. |
 | `--phase buggy|patched|both` | `both` | Runs the original version, the ThinkRepair-patched version, or both. |
-| `--test-scope all|relevant|trigger` | `all` | Uses all tests, Defects4J relevant tests, or official triggering tests. Complete experiments should use `all`; the others are for targeted checks. |
+| `--test-scope auto|all|relevant|trigger` | `auto` | Conservatively compares buggy and patched control flow before labeling: proven unchanged selects official Defects4J relevant tests; changed or unknown selects all tests. Explicit scopes override the policy; relevant/trigger overrides are diagnostic runs. |
 | `--max-tests N` | No limit | Runs only the first `N` discovered tests. Intended for smoke tests, not final data. |
 | `--compile-timeout SECONDS` | `1800` | Maximum time for project compilation. |
 | `--test-timeout SECONDS` | `600` | Maximum time for each individual test. |

@@ -217,11 +217,11 @@ def _path_touches_unit(
 
 def _document_source_root(document: dict[str, Any]) -> Path | None:
     metadata = document.get("metadata", {})
-    recorded_root = metadata.get("patch_label.source_root") or document.get("_analysis_source_root")
-    if recorded_root:
-        root = Path(str(recorded_root))
-        if root.is_dir():
-            return root
+    for recorded_root in (document.get("_analysis_source_root"), metadata.get("patch_label.source_root")):
+        if recorded_root:
+            root = Path(str(recorded_root))
+            if root.is_dir():
+                return root
     class_dir = metadata.get("dir.src.classes")
     classpath = metadata.get("cp.test", "")
     if class_dir and classpath:

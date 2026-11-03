@@ -236,7 +236,7 @@ uv run patch-label build-helper [--force] [通用路径参数]
 uv run patch-label run \
   [--example SELECTOR ...] \
   [--phase buggy|patched|both] \
-  [--test-scope all|relevant|trigger] \
+  [--test-scope auto|all|relevant|trigger] \
   [--max-tests N] \
   [--compile-timeout SECONDS] \
   [--test-timeout SECONDS] \
@@ -252,7 +252,7 @@ uv run patch-label run \
 | --- | --- | --- |
 | `--example SELECTOR` | 全部样例 | 选择一个样例；重复该参数可选择多个样例。 |
 | `--phase buggy|patched|both` | `both` | 运行原始版本、ThinkRepair 修补版本或两个版本。 |
-| `--test-scope all|relevant|trigger` | `all` | 使用全部测试、Defects4J relevant 测试或官方 trigger 测试。完整实验应使用 `all`，后两者用于定向检查。 |
+| `--test-scope auto|all|relevant|trigger` | `auto` | 标注前保守比较 buggy 与 patched 控制流；确认未改变时选官方 relevant 测试，改变或无法确认时全量测试。显式范围覆盖自动策略，relevant/trigger 覆盖仅用于定向检查。 |
 | `--max-tests N` | 不限制 | 只运行发现顺序中的前 `N` 个测试；仅用于冒烟检查，不适合作为最终数据。 |
 | `--compile-timeout SECONDS` | `1800` | 项目编译的最长时间。 |
 | `--test-timeout SECONDS` | `600` | 每个单独测试的最长时间。 |
