@@ -278,6 +278,7 @@ uv run patch-label run \
 | `--max-loop-visits N` | `2` | Maximum appearances of an ordinary CFG node in one statically enumerated path. |
 | `--max-paths-per-method N` | `1000` | Maximum stored static paths per method. Limit hits are recorded in the aggregate. |
 | `--jobs N` | `1` | Runs up to `N` independent examples concurrently. Tests and phases within one example remain sequential. |
+| `--max-trace-events N` | `5000000` | Maximum recorded trace events per test JVM before further events are counted as dropped. |
 | `--fresh` | Off | Deletes and rebuilds tool-managed output/checkouts for the selected fingerprint. It does not modify the Defects4J repository itself. |
 | `--no-resume` | Off | Disables reuse of matching per-test results and reruns the selected phase. |
 | `--keep-going` | Off | Continues with later examples after a failure and writes `results/failures.json`. |

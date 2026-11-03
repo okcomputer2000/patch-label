@@ -37,10 +37,43 @@ def test_trace_parser_rejects_missing_integrity_metadata(tmp_path: Path) -> None
         _parse_trace_files(tmp_path)
 
 
+def test_trace_parser_drops_unterminated_partial_final_event(tmp_path: Path) -> None:
+    trace = tmp_path / "trace-1.tsv"
+    trace.write_text(
+        "# sequence\tthread\tnode_id\n"
+        "# trace_truncated\tfalse\n"
+        "# dropped_events\t0\n"
+        "1\t10\tM:ENTRY\n"
+        "2",
+        encoding="utf-8",
+    )
+    _, traces, dropped = _parse_trace_files(tmp_path)
+    assert traces == [{"file": trace.name, "thread_id": "10", "nodes": ["M:ENTRY"]}]
+    assert dropped == 1
+
+
+def test_trace_parser_rejects_malformed_nonfinal_event(tmp_path: Path) -> None:
+    trace = tmp_path / "trace-1.tsv"
+    trace.write_text(
+        "# trace_truncated\tfalse\n"
+        "# dropped_events\t0\n"
+        "1\n"
+        "2\t10\tM:EXIT\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(ExperimentError, match="Malformed trace event"):
+        _parse_trace_files(tmp_path)
+
+
 def test_invalid_limits_fail_before_running_tools(tmp_path: Path) -> None:
     config = ExperimentConfig(tmp_path, tmp_path, tmp_path, tmp_path, tmp_path,
                               max_tests=0)
     with pytest.raises(ExperimentError, match="max_tests must be at least 1"):
+        ExperimentRunner(config)
+
+    config.max_tests = None
+    config.max_trace_events = 0
+    with pytest.raises(ExperimentError, match="max_trace_events must be at least 1"):
         ExperimentRunner(config)
 
 
@@ -73,6 +106,9 @@ def test_run_fingerprint_changes_with_config_patch_and_source(tmp_path: Path, mo
                         CommandResult((), 0, "revision-a\n", "", 0))
     example = Example("D4JV2.0", "Compress", 44, root, patch)
     baseline = runner._run_fingerprint(example, "buggy")
+    config.max_trace_events = 1_000_000
+    assert runner._run_fingerprint(example, "buggy") != baseline
+    config.max_trace_events = 5_000_000
     config.test_scope = "trigger"
     assert runner._run_fingerprint(example, "buggy") != baseline
     config.test_scope = "all"
@@ -92,6 +128,7 @@ def test_new_run_preserves_legacy_result(tmp_path: Path, monkeypatch) -> None:
     runner.helper_jar = helper
     runner.d4j = type("FakeD4J", (), {
         "checkout": lambda self, *args, **kwargs: None,
+        "prepare_legacy_dependencies": lambda self, *args, **kwargs: None,
         "compile": lambda self, *args, **kwargs: CommandResult((), 0, "", "", 0),
     })()
     monkeypatch.setattr(runner, "_run_fingerprint", lambda *args: "a" * 64)

@@ -33,6 +33,7 @@ class ExperimentConfig:
     compile_timeout: float = 1800
     test_timeout: float = 600
     discovery_timeout: float = 600
+    max_trace_events: int = 5_000_000
     max_loop_visits: int = 2
     max_paths_per_method: int = 1000
     fresh: bool = False
@@ -63,7 +64,10 @@ def _parse_trace_files(trace_dir: Path) -> tuple[list[str], list[dict[str, Any]]
     for path in paths:
         events_by_thread: dict[str, list[tuple[int, str]]] = {}
         metadata: dict[str, str] = {}
-        for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+        content = path.read_text(encoding="utf-8", errors="replace")
+        lines = content.splitlines()
+        incomplete_tail = 0
+        for index, line in enumerate(lines):
             if not line:
                 continue
             if line.startswith("# "):
@@ -72,6 +76,9 @@ def _parse_trace_files(trace_dir: Path) -> tuple[list[str], list[dict[str, Any]]
                 continue
             parts = line.split("\t", 2)
             if len(parts) != 3:
+                if index == len(lines) - 1 and not content.endswith(("\n", "\r")):
+                    incomplete_tail = 1
+                    continue
                 raise ExperimentError(f"Malformed trace event in {path}: {line!r}")
             try:
                 sequence = int(parts[0])
@@ -86,7 +93,7 @@ def _parse_trace_files(trace_dir: Path) -> tuple[list[str], list[dict[str, Any]]
             raise ExperimentError(f"Invalid dropped event count in {path}") from None
         if file_dropped < 0 or (file_dropped > 0) != (metadata["trace_truncated"] == "true"):
             raise ExperimentError(f"Inconsistent trace integrity metadata in {path}")
-        dropped_events += file_dropped
+        dropped_events += file_dropped + incomplete_tail
         for thread_id, events in sorted(events_by_thread.items()):
             traces.append({
                 "file": path.name,
@@ -98,7 +105,7 @@ def _parse_trace_files(trace_dir: Path) -> tuple[list[str], list[dict[str, Any]]
 
 class ExperimentRunner:
     def __init__(self, config: ExperimentConfig):
-        for name in ("max_tests", "max_loop_visits", "max_paths_per_method"):
+        for name in ("max_tests", "max_trace_events", "max_loop_visits", "max_paths_per_method"):
             value = getattr(config, name)
             if value is not None and value < 1:
                 raise ExperimentError(f"{name} must be at least 1")
@@ -135,6 +142,11 @@ class ExperimentRunner:
                 digest.update(path.read_bytes())
         for path in (self.config.repo_root / "pyproject.toml", example.patch_file, self.helper_jar):
             digest.update(path.read_bytes())
+        dependency_dir = self.config.state_dir / "dependencies"
+        if dependency_dir.is_dir():
+            for path in sorted(dependency_dir.glob("*.jar")):
+                digest.update(path.name.encode("utf-8"))
+                digest.update(path.read_bytes())
         revision = run_command(
             ["git", "-C", str(self.config.defects4j_dir), "rev-parse", "HEAD"],
             cwd=self.config.repo_root,
@@ -154,6 +166,7 @@ class ExperimentRunner:
             "compile_timeout": self.config.compile_timeout,
             "test_timeout": self.config.test_timeout,
             "discovery_timeout": self.config.discovery_timeout,
+            "max_trace_events": self.config.max_trace_events,
             "max_loop_visits": self.config.max_loop_visits,
             "max_paths_per_method": self.config.max_paths_per_method,
             "inputs_sha256": digest.hexdigest(),
@@ -197,6 +210,7 @@ class ExperimentRunner:
         # A partial previous run may have already applied the patch. Always restore
         # the original checkout before rebuilding an incomplete phase.
         self.d4j.checkout(example, checkout, fresh=checkout.exists())
+        self.d4j.prepare_legacy_dependencies(checkout)
         output_dir.mkdir(parents=True, exist_ok=True)
         write_json(manifest_file, {"schema_version": "2.0", "run_fingerprint": fingerprint})
         metadata = self._metadata(checkout)
@@ -529,7 +543,7 @@ class ExperimentRunner:
             f"bootstrapJar={bootstrap_jar}\n"
             f"testClass={test.class_name}\n"
             f"testMethod={test.method_name or ''}\n"
-            "maxEvents=5000000\n",
+            f"maxEvents={self.config.max_trace_events}\n",
             encoding="utf-8",
         )
         option = f"-javaagent:{runtime_jar}={properties}"

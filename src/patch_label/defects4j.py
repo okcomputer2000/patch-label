@@ -14,6 +14,11 @@ class Defects4JError(RuntimeError):
 
 
 class Defects4J:
+    _LEGACY_DEPENDENCIES = {
+        "commons-logging.jar": ("commons-logging-1.0.3.jar", "commons-logging-1.0.4.jar"),
+        "commons-discovery.jar": ("commons-discovery-0.2.jar",),
+    }
+
     def __init__(self, root: Path, *, java_major: int = 11, state_dir: Path | None = None):
         self.root = root.resolve()
         self.java_major = java_major
@@ -126,6 +131,30 @@ class Defects4J:
             cwd=destination.parent,
             timeout=1800,
         )
+
+    def prepare_legacy_dependencies(self, checkout: Path) -> None:
+        if self.state_dir is None:
+            return
+        build_file = checkout / "build.xml"
+        dependency_dir = self.state_dir / "dependencies"
+        if not build_file.is_file() or not dependency_dir.is_dir():
+            return
+        build_text = build_file.read_text(encoding="utf-8", errors="replace")
+        configured: dict[str, str] = {}
+        for property_name, filenames in self._LEGACY_DEPENDENCIES.items():
+            for filename in filenames:
+                dependency = dependency_dir / filename
+                if filename in build_text and dependency.is_file():
+                    configured[property_name] = dependency.resolve().as_uri()
+                    break
+        if not configured:
+            return
+        properties_file = checkout / "build.properties"
+        existing = properties_file.read_text(encoding="utf-8").splitlines() if properties_file.is_file() else []
+        prefixes = tuple(f"{name}=" for name in configured)
+        lines = [line for line in existing if not line.startswith(prefixes)]
+        lines.extend(f"{name}={value}" for name, value in sorted(configured.items()))
+        properties_file.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
     @staticmethod
     def _assert_managed_checkout(destination: Path) -> None:

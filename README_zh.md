@@ -260,6 +260,7 @@ uv run patch-label run \
 | `--max-loop-visits N` | `2` | 静态枚举的一条路径中，普通 CFG 节点最多出现的次数。 |
 | `--max-paths-per-method N` | `1000` | 每个方法最多保存的静态路径数；达到上限会在聚合数据中记录。 |
 | `--jobs N` | `1` | 最多同时运行 `N` 个独立样例；同一样例中的测试和两个阶段仍然顺序执行。 |
+| `--max-trace-events N` | `5000000` | 每个测试 JVM 最多记录的轨迹事件数；超过上限的事件会计入丢弃数量。 |
 | `--fresh` | 关闭 | 删除并重建所选运行指纹对应的工具管理结果和 checkout；不会修改 Defects4J 仓库本身。 |
 | `--no-resume` | 关闭 | 禁止复用指纹一致的逐测试结果，重新执行所选阶段。 |
 | `--keep-going` | 关闭 | 某个样例失败后继续处理后续样例，并写入 `results/failures.json`。 |

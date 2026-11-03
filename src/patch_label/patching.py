@@ -14,6 +14,17 @@ class PatchApplyError(RuntimeError):
     pass
 
 
+def _read_source_lines(source_file: Path) -> tuple[list[str], str]:
+    data = source_file.read_bytes()
+    try:
+        encoding = "utf-8"
+        text = data.decode(encoding)
+    except UnicodeDecodeError:
+        encoding = "iso-8859-1"
+        text = data.decode(encoding)
+    return text.splitlines(keepends=True), encoding
+
+
 @dataclass(frozen=True, slots=True)
 class Hunk:
     header: str
@@ -73,11 +84,11 @@ def _find_matches(source: list[str], needle: tuple[str, ...], normalized: bool) 
 
 def apply_context_patch(patch_file: Path, source_files: list[Path]) -> dict[str, object]:
     hunks = parse_unified_patch(patch_file)
-    contents = {
-        source_file: source_file.read_text(encoding="utf-8").splitlines(keepends=True)
-        for source_file in source_files
-        if source_file.is_file()
-    }
+    source_encodings: dict[Path, str] = {}
+    contents: dict[Path, list[str]] = {}
+    for source_file in source_files:
+        if source_file.is_file():
+            contents[source_file], source_encodings[source_file] = _read_source_lines(source_file)
     if not contents:
         raise PatchApplyError("No candidate Java source files were found")
 
@@ -114,7 +125,7 @@ def apply_context_patch(patch_file: Path, source_files: list[Path]) -> dict[str,
         )
 
     for source_file in touched:
-        source_file.write_text("".join(contents[source_file]), encoding="utf-8")
+        source_file.write_bytes("".join(contents[source_file]).encode(source_encodings[source_file]))
     return {
         "patch_file": str(patch_file),
         "touched_files": sorted(str(path) for path in touched),

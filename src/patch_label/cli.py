@@ -100,6 +100,7 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--compile-timeout", type=float, default=1800)
     run.add_argument("--test-timeout", type=float, default=600)
     run.add_argument("--discovery-timeout", type=float, default=600)
+    run.add_argument("--max-trace-events", type=int, default=5_000_000)
     run.add_argument("--max-loop-visits", type=int, default=2)
     run.add_argument("--max-paths-per-method", type=int, default=1000)
     run.add_argument(
@@ -306,6 +307,7 @@ def command_run(args: argparse.Namespace) -> int:
         compile_timeout=args.compile_timeout,
         test_timeout=args.test_timeout,
         discovery_timeout=args.discovery_timeout,
+        max_trace_events=args.max_trace_events,
         max_loop_visits=args.max_loop_visits,
         max_paths_per_method=args.max_paths_per_method,
         fresh=args.fresh,
