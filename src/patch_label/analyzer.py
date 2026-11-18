@@ -11,6 +11,10 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 
+from .expression_models.integrals import (
+    contains_batch1_syntax,
+    evaluate_integral_constant,
+)
 from .patching import Hunk, apply_context_patch, parse_unified_patch
 
 try:
@@ -480,6 +484,7 @@ def _java_sort_hint(node: Any, source: bytes) -> str | None:
         "hex_integer_literal",
         "octal_integer_literal",
         "binary_integer_literal",
+        "character_literal",
         "null_literal",
     }:
         return "int"
@@ -522,6 +527,49 @@ def _named_child(node: Any, index: int = 0) -> Any | None:
     return children[index] if len(children) > index else None
 
 
+def _integral_dependencies(node: Any, source: bytes, unsupported: set[str]) -> None:
+    """Keep concrete unsupported dependencies without evaluating old arithmetic."""
+    stack = [node]
+    while stack:
+        current = stack.pop()
+        if current.type in {
+            "method_invocation", "array_access", "object_creation_expression",
+            "decimal_floating_point_literal", "hex_floating_point_literal",
+        }:
+            unsupported.add(f"{current.type}:{_node_text(current, source)}")
+        if current.type == "cast_expression" and evaluate_integral_constant(current, source) is None:
+            value = current.child_by_field_name("value")
+            target = current.child_by_field_name("type")
+            if value is None or target is None:
+                unsupported.add("cast_fields_missing")
+            elif target.type != "integral_type":
+                unsupported.add(f"cast_target_not_modeled:{_node_text(target, source)}")
+            else:
+                unsupported.add(f"cast_source_not_modeled:{value.type}:{_node_text(value, source)}")
+        stack.extend(current.named_children)
+
+
+def _integral_unknown(
+    node: Any,
+    source: bytes,
+    atoms: dict[str, Any],
+    variables: dict[str, Any],
+    occurrence: int,
+    sort: str,
+    unsupported: set[str],
+) -> Any:
+    """Do not assume two unmodeled calls with the same spelling are pure."""
+    unsupported.add(f"{node.type}:{_node_text(node, source)}")
+    identity = (
+        f"integral_unknown:{hashlib.sha256(source).hexdigest()}:"
+        f"{node.start_byte}:{node.end_byte}:{occurrence}:{sort}"
+    )
+    name = "integral_unknown_" + hashlib.sha1(identity.encode()).hexdigest()[:16]
+    if sort == "bool":
+        return atoms.setdefault(identity, z3.Bool(name))
+    return variables.setdefault(identity, z3.Int(name))
+
+
 def _java_expression(
     node: Any,
     source: bytes,
@@ -540,6 +588,41 @@ def _java_expression(
     unsupported = unsupported if unsupported is not None else set()
     node_type = node.type
     result_sort = expected_sort or _java_sort_hint(node, source) or "int"
+    if node_type in {"character_literal", "cast_expression"}:
+        integral = evaluate_integral_constant(node, source)
+        if integral is not None:
+            return z3.IntVal(integral.value)
+        if node_type == "cast_expression":
+            value_node = node.child_by_field_name("value")
+            type_node = node.child_by_field_name("type")
+            if value_node is None or type_node is None:
+                unsupported.add("cast_fields_missing")
+            elif type_node.type != "integral_type":
+                unsupported.add(f"cast_target_not_modeled:{_node_text(type_node, source)}")
+            else:
+                unsupported.add(
+                    f"cast_source_not_modeled:{value_node.type}:"
+                    f"{_node_text(value_node, source)}"
+                )
+        return _integral_unknown(
+            node, source, atoms, variables, occurrence, result_sort, unsupported
+        )
+    # Newly understood leaves must not make old, unbounded arithmetic look
+    # exact. Closed integral expressions can be evaluated with Java widths;
+    # dynamic arithmetic remains explicitly unsupported in this first batch.
+    if (
+        node_type in {"binary_expression", "unary_expression", "update_expression"}
+        and _java_operator(node, source) in {"+", "-", "*", "/", "%", "~", "++", "--"}
+        and contains_batch1_syntax(node)
+    ):
+        integral = evaluate_integral_constant(node, source)
+        if integral is not None:
+            return z3.IntVal(integral.value)
+        unsupported.add(f"integral_arithmetic_not_modeled:{_node_text(node, source)}")
+        _integral_dependencies(node, source, unsupported)
+        return _integral_unknown(
+            node, source, atoms, variables, occurrence, result_sort, unsupported
+        )
     if node_type == "parenthesized_expression":
         inner = node.child_by_field_name("expression") or _named_child(node)
         return (
@@ -596,6 +679,30 @@ def _java_expression(
         if left is None or right is None or symbol is None:
             return _java_atom(
                 node, source, atoms, variables, occurrence, result_sort, unsupported
+            )
+        if symbol in {"<", "<=", ">", ">=", "==", "!="} and contains_batch1_syntax(node):
+            left_integral = evaluate_integral_constant(left, source)
+            right_integral = evaluate_integral_constant(right, source)
+            if left_integral is not None and right_integral is not None:
+                a, b = left_integral.value, right_integral.value
+                comparisons = {
+                    "<": a < b, "<=": a <= b, ">": a > b,
+                    ">=": a >= b, "==": a == b, "!=": a != b,
+                }
+                return z3.BoolVal(comparisons[symbol])
+            # Knowing a char literal does not establish the other operand's
+            # Java type/range (char cannot be negative; double can be NaN).
+            # Use an unknown comparison, not old integer arithmetic: merely
+            # tagging an unsatisfiable approximation is insufficient because
+            # existing callers may discard an unsatisfiable path first.
+            for operand, integral in ((left, left_integral), (right, right_integral)):
+                if integral is None:
+                    unsupported.add(
+                        f"integral_comparison_operand_not_modeled:{_node_text(operand, source)}"
+                    )
+            _integral_dependencies(node, source, unsupported)
+            return _integral_unknown(
+                node, source, atoms, variables, occurrence, "bool", unsupported
             )
         if symbol in {"&&", "||"}:
             operand_sort = "bool"
@@ -676,18 +783,6 @@ def _java_expression(
         return _java_atom(
             node, source, atoms, variables, occurrence, result_sort, unsupported
         )
-    if node_type == "cast_expression":
-        expression = node.child_by_field_name("expression") or _named_child(node)
-        if expression is not None:
-            return _java_expression(
-                expression,
-                source,
-                atoms,
-                variables,
-                occurrence,
-                expected_sort=result_sort,
-                unsupported=unsupported,
-            )
     return _java_atom(
         node, source, atoms, variables, occurrence, result_sort, unsupported
     )
