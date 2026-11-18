@@ -7,6 +7,7 @@ import re
 import shutil
 import tempfile
 from collections import Counter
+from contextvars import ContextVar
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
@@ -15,6 +16,8 @@ from .expression_models.integrals import (
     contains_batch1_syntax,
     evaluate_integral_constant,
 )
+from .expression_models.values import ExprResult, ModelContext
+from .expression_models.symbolic_integrals import WIDTHS, evaluate_typed_expression
 from .patching import Hunk, apply_context_patch, parse_unified_patch
 
 try:
@@ -29,6 +32,37 @@ except ImportError:  # pragma: no cover - dependency is installed by the project
     Language = None
     Parser = None
     tree_sitter_java = None
+
+
+_BATCH1_METHODS: ContextVar[frozenset[str]] = ContextVar("batch1_methods", default=frozenset())
+_BATCH1_SHARED_METHODS: ContextVar[frozenset[str] | None] = ContextVar("batch1_shared_methods", default=None)
+
+
+def _batch1_methods_for_documents(*documents: dict[str, Any], all_methods: bool = False) -> frozenset[str]:
+    """Activate both versions of a method when either contains the new syntax."""
+    parser = _java_parser()
+    if parser is None:
+        return frozenset()
+    keys: set[str] = set()
+    seen: set[Path] = set()
+    for document in documents:
+        root = _document_source_root(document)
+        for graph_node in document.get("graph", {}).get("nodes", []):
+            path = _source_file_for_node(root, graph_node)
+            if path is None or path in seen:
+                continue
+            seen.add(path)
+            source = path.read_bytes()
+            tree = parser.parse(source)
+            stack = [tree.root_node]
+            while stack:
+                node = stack.pop()
+                if node.type in ({"method_declaration"} if all_methods else {"character_literal", "cast_expression"}):
+                    context = ModelContext.from_node(node, source)
+                    if context.method_key is not None:
+                        keys.add(context.method_key)
+                stack.extend(node.named_children)
+    return frozenset(keys)
 
 
 @dataclass(frozen=True, slots=True)
@@ -788,6 +822,64 @@ def _java_expression(
     )
 
 
+def _expression_result(
+    node: Any, source: bytes, atoms: dict[str, Any], variables: dict[str, Any],
+    occurrence: int, expected_sort: str | None = None, *, force_typed: bool = False,
+    graph_node: dict[str, Any] | None = None,
+) -> ExprResult:
+    """Uniform result at the path/output boundary; legacy API stays compatible.
+
+Every condition of an activated method uses the same typed parameter identities
+on both sides. Unsupported statements never fall back to legacy integer math.
+"""
+    context = ModelContext.from_node(node, source)
+    active = force_typed or context.method_key in _BATCH1_METHODS.get() or contains_batch1_syntax(node)
+    unsupported: set[str] = set()
+    if not active:
+        value = _java_expression(node, source, atoms, variables, occurrence, expected_sort, unsupported)
+        return ExprResult(value, "boolean" if z3.is_bool(value) else None, z3.BoolVal(True), unsupported=unsupported)
+    matched, match_reason = (True, "") if graph_node is None else context.match_graph_method(graph_node)
+    if not matched:
+        unsupported.add(f"source_method_not_matched:{match_reason}")
+    elif graph_node is not None:
+        # The matcher verified this complete binary signature against source.
+        # Use it for parameter identity, not an unresolved short type spelling.
+        context.method_key = context.signature_key = graph_node["method_id"]
+    result = evaluate_typed_expression(node, source, context, unsupported) if matched else None
+    if result is not None:
+        shared = _BATCH1_SHARED_METHODS.get()
+        has_parameters = any(item.get("parameter_key") for item in result.model_evidence)
+        if has_parameters and shared is not None and context.method_key not in shared:
+            unsupported.add("paired_method_signature_not_established")
+        elif expected_sort == "bool" and result.java_type != "boolean":
+            unsupported.add("typed_integral_expected_boolean")
+        elif expected_sort == "int" and result.java_type == "boolean":
+            unsupported.add("typed_integral_expected_number")
+        else:
+            for item in result.model_evidence:
+                if item.get("parameter_key"):
+                    java_type = item["java_type"]
+                    bits = z3.BitVec(item["solver_symbol"], WIDTHS[java_type])
+                    variables.setdefault(item["parameter_key"], z3.BV2Int(bits, is_signed=java_type != "char"))
+            result.model_evidence.append({
+                "model": "java-integral-subset-v2", "source_sha256": hashlib.sha256(source).hexdigest(),
+                "start_byte": node.start_byte, "end_byte": node.end_byte, "method_key": context.method_key,
+                "java_type": result.java_type, "normal_when": "true",
+                "parameter_range": "fixed-width bit-vector; no negatable range assumption",
+            })
+            return result
+    _integral_dependencies(node, source, unsupported)
+    value = _integral_unknown(
+        node, source, atoms, variables, occurrence,
+        expected_sort or _java_sort_hint(node, source) or "int", unsupported,
+    )
+    return ExprResult(value, None, z3.BoolVal(True), unsupported=unsupported, model_evidence=[{
+        "model": "java-integral-subset-v2", "source_sha256": hashlib.sha256(source).hexdigest(),
+        "start_byte": node.start_byte, "end_byte": node.end_byte, "method_key": context.method_key,
+        "status": "unsupported",
+    }])
+
+
 def _path_constraint(
     document: dict[str, Any],
     path: dict[str, Any],
@@ -825,17 +917,20 @@ def _path_constraint(
         if expression is not None and polarity in {"true", "false"}:
             condition_node = expression["node"]
             condition_source = expression["source"]
-            unsupported: set[str] = set()
-            condition = _java_expression(
+            modeled = _expression_result(
                 condition_node,
                 condition_source,
                 atoms,
                 variables,
                 occurrence,
                 expected_sort="bool",
-                unsupported=unsupported,
+                force_typed=source in (condition_overrides or {}) and bool(_BATCH1_METHODS.get()),
+                graph_node=nodes.get(source, {}),
             )
+            unsupported = modeled.unsupported
+            condition = modeled.value
             term = condition if polarity == "true" else z3.Not(condition)
+            term = z3.And(modeled.normal_when, *modeled.domain_constraints, term)
             item.update(
                 {
                     "predicate": _node_text(condition_node, condition_source),
@@ -848,6 +943,7 @@ def _path_constraint(
                     "precision": "abstracted" if unsupported else "exact_subset",
                     "unsupported_expressions": sorted(unsupported),
                     "source_file": expression["source_file"],
+                    "expression_model": modeled.model_evidence,
                 }
             )
         else:
@@ -950,6 +1046,7 @@ def _extract_symbolic_outputs(
     lines: tuple[str, ...],
     atoms: dict[str, Any],
     variables: dict[str, Any],
+    *, force_typed: bool = False,
 ) -> list[dict[str, Any]]:
     parser = _java_parser()
     if parser is None:
@@ -994,23 +1091,30 @@ def _extract_symbolic_outputs(
                     }
                 )
             else:
-                unsupported: set[str] = set()
                 sort = _java_sort_hint(expression, source) or "int"
-                symbolic = _java_expression(
+                modeled = _expression_result(
                     expression,
                     source,
                     atoms,
                     variables,
                     0,
                     expected_sort=sort,
-                    unsupported=unsupported,
+                    force_typed=force_typed,
                 )
+                # This synthetic hunk has no verified return/assignment target.
+                # Equal numbers need not be equal Java outputs: boxing 'A' and
+                # 65 produces Character and Integer. Keep the computed value
+                # for evidence, but do not certify output equivalence here.
+                if modeled.model_evidence and not modeled.unsupported:
+                    modeled.unsupported.add(f"output_target_type_not_established:{modeled.java_type}")
                 outputs.append(
                     {
                         "channel": channel,
                         "text": _node_text(expression, source),
-                        "expression": symbolic,
-                        "unsupported": sorted(unsupported),
+                        "expression": modeled.value,
+                        "java_type": modeled.java_type,
+                        "unsupported": sorted(modeled.unsupported),
+                        "expression_model": modeled.model_evidence,
                     }
                 )
         stack.extend(reversed(node.named_children))
@@ -1078,6 +1182,18 @@ def _variant_constraint(
     return result
 
 
+def _unit_uses_batch1(unit: PatchUnit) -> bool:
+    parser = _java_parser()
+    if parser is None:
+        return False
+    return any(
+        contains_batch1_syntax(parser.parse((
+            "class __PatchLabel__ { void f() {\n" + "".join(lines) + "\n} }"
+        ).encode()).root_node)
+        for lines in (unit.old_lines, unit.new_lines)
+    )
+
+
 def _variant_outputs(
     units: list[PatchUnit],
     reverted: int | None,
@@ -1091,6 +1207,7 @@ def _variant_outputs(
             unit.old_lines if unit.index == reverted else unit.new_lines,
             atoms,
             variables,
+            force_typed=_unit_uses_batch1(unit),
         )
     ]
 
@@ -1548,18 +1665,33 @@ def analyze_pair(
     if patched_source_root is not None and patched_source_root.is_dir():
         patched["_analysis_source_root"] = str(patched_source_root)
     units = load_patch_units(patch_file, patched_manifest)
+    active_methods = _batch1_methods_for_documents(buggy, patched)
+    token = _BATCH1_METHODS.set(active_methods)
+    shared = frozenset(
+        str(node["method_id"]) for node in buggy.get("graph", {}).get("nodes", []) if node.get("method_id")
+    ) & frozenset(
+        str(node["method_id"]) for node in patched.get("graph", {}).get("nodes", []) if node.get("method_id")
+    )
+    shared_token = _BATCH1_SHARED_METHODS.set(shared)
+    try:
+        tests = {
+            "root_cause_not_fixed": _root_cause_test(buggy, patched, units),
+            "boundary_incomplete": _boundary_test(buggy, patched, units),
+            "overrepair": _overrepair_test(buggy, patched, units),
+        }
+    finally:
+        _BATCH1_METHODS.reset(token)
+        _BATCH1_SHARED_METHODS.reset(shared_token)
     return {
         "schema_version": "1.1",
         "example": key,
         "patch_file": str(patch_file),
         "patch_units": [asdict(unit) for unit in units],
-        "tests": {
-            "root_cause_not_fixed": _root_cause_test(buggy, patched, units),
-            "boundary_incomplete": _boundary_test(buggy, patched, units),
-            "overrepair": _overrepair_test(buggy, patched, units),
-        },
+        "tests": tests,
         "solver": "z3" if z3 is not None else "structural-fallback",
         "constraint_model": {
+            "integral_model": "java-integral-subset-v2",
+            "typed_methods": sorted(active_methods),
             "scope": "source-level branch expressions mapped to CFG edges when matching worktree source is available",
             "fallback": "abstract CFG branch identities and edge polarities are evidence only and cannot by themselves confirm a label",
             "symbolic_values": "Boolean and integer identifiers, field reads, literals, comparisons, arithmetic, and Boolean operators are modeled by Z3",
