@@ -255,6 +255,11 @@ class ModelContext:
         # duplicate source declarations merely because one descriptor matches.
         for sibling in self.method_node.parent.named_children:
             if sibling.type == "method_declaration" and not _same_node(sibling, self.method_node):
+                sibling_name = sibling.child_by_field_name("name")
+                if sibling_name is None or self._text(sibling_name) != self._method_name:
+                    # method_key contains the method name. A different name
+                    # cannot duplicate this signature; do not scan its body.
+                    continue
                 other = ModelContext.from_node(sibling, self.source)
                 if not other.reason and other.method_key == self.method_key:
                     return False, "duplicate_source_method_signature"
